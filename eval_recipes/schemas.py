@@ -20,7 +20,7 @@ class EvaluationOutput(BaseModel):
 
 
 class BaseEvaluationConfig(BaseModel):
-    provider: Literal["openai", "azure_openai"] = "openai"
+    provider: Literal["openai", "openai"] = "openai"
     model: Literal["gpt-5", "gpt-5-mini", "gpt-5-nano", "o3", "o4-mini"] = "gpt-5"
 
 

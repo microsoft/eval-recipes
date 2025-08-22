@@ -184,7 +184,7 @@ async def _(
     messages: "ResponseInputParam",
 ):
     criteria_config = CheckCriteriaEvaluationConfig(
-        provider="azure_openai",
+        provider="openai",
         model="gpt-5-mini",
         criteria=[
             "The response contains no emojis.",

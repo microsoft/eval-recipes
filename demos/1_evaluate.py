@@ -408,7 +408,7 @@ def _(mo):
 
     All evaluations share these common configuration parameters:
 
-    - **`provider`** (`"openai"` | `"azure_openai"`): The LLM provider to use for evaluation.
+    - **`provider`** (`"openai"` | `"openai"`): The LLM provider to use for evaluation.
     - **`model`** (`"gpt-5"` | `"gpt-5-mini"` | `"gpt-5-nano"` | `"o3"` | `"o4-mini"`): The model to use for evaluation.
 
 
@@ -461,7 +461,7 @@ def _(
     )
 
     guidance_config = GuidanceEvaluationConfig(
-        provider="azure_openai",
+        provider="openai",
         model="gpt-5",
         capability_manifest=CAPABILITY_MANIFEST,
     )
