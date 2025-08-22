@@ -6,7 +6,7 @@ Each evaluation will analyze an LLMs's responses against the inputs that generat
 
 ## Get Started Quick!
 
-### (TODO) 1. View notebooks directly on GitHub
+### 1. View notebooks directly on GitHub
 
 Located in [demos/](./demos)
 

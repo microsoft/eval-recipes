@@ -1,0 +1,70 @@
+# Copyright (c) Microsoft. All rights reserved
+
+name: Generate Jupyter Notebooks
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'demos/*.py'
+
+jobs:
+  generate-notebooks:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      
+      - name: Set up Python
+        run: uv python install
+      
+      - name: Install dependencies using make
+        run: make install
+      
+      - name: Install jupyter for notebook execution
+        run: |
+          source .venv/bin/activate
+          uv pip install jupyter nbconvert
+      
+      - name: Export marimo notebooks to Jupyter format
+        run: |
+          source .venv/bin/activate
+          for notebook in demos/*.py; do
+            if [[ -f "$notebook" ]]; then
+              output="${notebook%.py}.ipynb"
+              echo "Exporting $notebook to $output"
+              uv run marimo export ipynb "$notebook" -o "$output"
+            fi
+          done
+      
+      - name: Execute notebooks with outputs
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          source .venv/bin/activate
+          for notebook in demos/*.ipynb; do
+            if [[ -f "$notebook" ]]; then
+              echo "Executing $notebook"
+              jupyter execute --inplace --timeout=1000 --allow-errors "$notebook"
+            fi
+          done
+      
+      - name: Commit and push generated notebooks
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add demos/*.ipynb
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Auto-generate Jupyter notebooks from marimo sources"
+            git push
+          fi
