@@ -22,6 +22,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          # Use PAT for write access
+          token: ${{ secrets.PAT_TOKEN || github.token }}
           # For PRs, checkout the head branch so we can push back to it
           ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}
       
