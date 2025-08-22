@@ -4,7 +4,7 @@ name: Generate Jupyter Notebooks
 
 on:
   workflow_dispatch:
-  pull_request:  # This will make it run on the PR
+  pull_request:
     branches:
       - main
   push:
@@ -32,11 +32,6 @@ jobs:
       
       - name: Install dependencies using make
         run: make install
-      
-      - name: Install jupyter for notebook execution
-        run: |
-          source .venv/bin/activate
-          uv pip install jupyter nbconvert
       
       - name: Export marimo notebooks to Jupyter format
         run: |
@@ -70,5 +65,6 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "Auto-generate Jupyter notebooks from marimo sources"
-            git push
+            # Push to the branch that triggered the workflow
+            git push origin HEAD:${{ github.ref }}
           fi
