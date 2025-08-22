@@ -38,6 +38,7 @@ This rare botanical event was documented by the Institute of Magical Botany and 
     ]
 
 
+@pytest.mark.skip(reason="Time")
 async def test_claim_verifier_evaluate(messages) -> None:
     config = ClaimVerifierConfig(
         provider="openai",

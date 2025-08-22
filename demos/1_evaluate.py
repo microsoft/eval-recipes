@@ -321,9 +321,15 @@ def _(
         }
     )
 
-    FILE_CONTENT = (
-        Path(__file__).parents[0] / "data" / "Earnings Release FY24 Q4.md"
-    ).read_text(encoding='utf-8')
+    # Handle both .py and .ipynb environments
+    import sys
+    try:
+        data_path = Path(__file__).parents[0] / "data" / "Earnings Release FY24 Q4.md"
+    except NameError:
+        # Fallback for Jupyter notebooks - use current working directory
+        data_path = Path.cwd() / "data" / "Earnings Release FY24 Q4.md"
+    
+    FILE_CONTENT = data_path.read_text(encoding='utf-8')
 
     FUNCTION_CALL_OUTPUT_2 = FunctionCallOutput(
         {
