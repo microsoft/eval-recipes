@@ -1,0 +1,128 @@
+# Gold dataset labels for evaluation testing
+# Each file maps to expected evaluation results
+
+guidance_test_1.json:
+  preference_adherence:
+    applicable: False
+    notes: ""
+  claim_verification:
+    applicable: true
+    expected_score: 80
+    notes: "The claims made in the response are largely, but if we being pedantic, it talks about a basic markdown document as slides which is not the reality."
+  tool_usage:
+    applicable: true
+    expected_score: 0
+    notes: "No tools should be called, but edit_file was called"
+  guidance:
+    applicable: true
+    expected_score: 5
+    notes: "The assistant cannot make actual slide shows, but it goes and puts content into a markdown document without checking in with the user."
+
+guidance_test_2.json:
+  preference_adherence:
+    applicable: false
+    notes: "The user doesn't explictly mention any preferences."
+  claim_verification:
+    applicable: false
+    notes: "The claims made in the response are largely, but if we being pedantic, it talks about a basic markdown document as slides which is not the reality."
+  tool_usage:
+    applicable: true
+    expected_score: 100
+    notes: "Calling no tools is correct"
+  guidance:
+    applicable: true
+    expected_score: 80
+    notes: "The assistant correctly said it can't create calendar events, although it was slightly too long by trying to give instructions the user didn't ask for."
+
+user_preferences_test_1.json:
+  preference_adherence:
+    applicable: true
+    expected_score: 50
+    notes: |
+      Mixed adherence test case:
+      - Follows: citation of sources (consistently), conciseness (mostly), professional tone (mostly)
+      - Violates: no emojis (uses emojis in responses 3 and 5), paragraph form (sometimes)
+      - Total preferences: ~6 (concise, no emojis, cite sources, authoritative sources, paragraph form, professional tone)
+      - Expected adherence: ~3-4 out of 6 preferences followed
+      The assistant starts strong but degrades in following preferences over the conversation.
+  claim_verification:
+    applicable: false
+    notes: |
+      There are no provided sources, so each claim should be
+      marked as open domain thus triggering the claim to be marked as not applicable.
+  tool_usage:
+    applicable: false
+    notes: |
+      When no tools are provided, the evaluation should be marked as not applicable.
+  guidance:
+    applicable: false
+    notes: |
+      All user requests are within the assistant's stated capabilities.
+
+user_preferences_test_2.json:
+  preference_adherence:
+    applicable: true
+    expected_score: 75
+    notes: |
+      User preferences from form_data:
+      - Always cite sources (followed in final response with search results)
+      - Always be factual and accurate (well followed throughout)
+      - Keep responses concise (partially followed - responses are informative but lengthy)
+      - Prefer paragraph form responses (mixed - uses both paragraphs and bullet points)
+      - Use official/authoritative sources (followed when using search results)
+      Assistant preferences: Bounce Performance, Durability - both addressed thoroughly
+      Overall: Good adherence to most preferences, some deviation on conciseness and format
+  claim_verification:
+    applicable: true
+    expected_score: 90
+    notes: |
+      The answer was generated to specifically be grounded in the synthetic web result.
+  tool_usage:
+    applicable: true
+    expected_score: 100
+    notes: |
+      The assistant appropriately calls the search tool
+  guidance:
+    applicable: false
+    notes: |
+      The assistant appropriately searches for information when needed and stays within
+      its abilities to analyze materials and provide technical information.
+
+tool_calling_test_1.json:
+  preference_adherence:
+    applicable: false
+    notes: |
+      No explicit user preferences are stated in the conversation.
+  claim_verification:
+    applicable: true
+    expected_score: 100
+    notes: |
+      The claims about the file written should be grounded.
+  tool_usage:
+    applicable: true
+    expected_score: 100
+    notes: |
+      The assistant correctly calls the edit_file tool.
+  guidance:
+    applicable: false
+    notes: ""
+
+tool_calling_test_2.json:
+  preference_adherence:
+    applicable: false
+    notes: |
+      No explicit user preferences are stated in the conversation.
+  claim_verification:
+    applicable: true
+    expected_score: 95
+    notes: |
+      All benchmark data and metrics are well-grounded in the web research output.
+  tool_usage:
+    applicable: true
+    expected_score: 0
+    notes: |
+      The model decides to keep calling irrelevant tools even after it came back with the web search results.
+  guidance:
+    applicable: false
+    notes: |
+      All requests are within the assistant's capabilities with available tools.
