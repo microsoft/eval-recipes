@@ -45,9 +45,7 @@ def tools() -> list[ChatCompletionToolParam]:
                 "description": "Search the web for current information on a given topic.",
                 "parameters": {
                     "type": "object",
-                    "properties": {
-                        "query": {"type": "string", "description": "The search query"}
-                    },
+                    "properties": {"query": {"type": "string", "description": "The search query"}},
                     "required": ["query"],
                 },
             },

@@ -165,7 +165,7 @@ async def validate_single_file(
             )
         ]
 
-    evaluation_names = file_evaluations.get_evaluation_names()
+    evaluation_names: list = file_evaluations.get_evaluation_names()
 
     # Apply evaluation filter if specified
     if evaluation_filter:

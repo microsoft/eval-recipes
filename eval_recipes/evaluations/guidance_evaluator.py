@@ -175,13 +175,9 @@ class GuidanceEvaluator:
         """
         self.config = config or GuidanceEvaluationConfig()
 
-    async def evaluate(
-        self, messages: ResponseInputParam, tools: list[ChatCompletionToolParam]
-    ) -> EvaluationOutput:
+    async def evaluate(self, messages: ResponseInputParam, tools: list[ChatCompletionToolParam]) -> EvaluationOutput:
         input_data = InputGuidanceEval(
-            conversation_history_full=format_full_history(
-                messages, remove_system_messages=False
-            ),
+            conversation_history_full=format_full_history(messages, remove_system_messages=False),
             conversation_history_beginning_turn=format_full_history(
                 messages, remove_system_messages=True, only_upto_last_user=True
             ),
@@ -194,9 +190,7 @@ class GuidanceEvaluator:
             score=results.score,
             feedback=self._feedback(results),
             metadata={
-                "in_scope_reasoning": results.is_in_scope_reasoning.model_dump(
-                    mode="json"
-                ),
+                "in_scope_reasoning": results.is_in_scope_reasoning.model_dump(mode="json"),
                 "reasoning": results.reasoning,
             },
         )
@@ -217,10 +211,7 @@ class GuidanceEvaluator:
 
         # First determine if the request is in scope or not
         is_in_scope_reasoning = await self._evaluate_scope(input)
-        if (
-            is_in_scope_reasoning.is_in_scope_probability
-            >= self.config.in_scope_probability_threshold
-        ):
+        if is_in_scope_reasoning.is_in_scope_probability >= self.config.in_scope_probability_threshold:
             # If the request is in scope, we can skip the graceful failure evaluation
             return OutputGuidanceEval(
                 is_in_scope_reasoning=is_in_scope_reasoning,
@@ -247,16 +238,15 @@ class GuidanceEvaluator:
         - Ensures reasoning is not empty
         """
         clamped_score = max(SCORE_MIN, min(SCORE_MAX, result.score))
-        reasoning = (
-            result.reasoning if result.reasoning.strip() else "No reasoning provided"
-        )
+        reasoning = result.reasoning if result.reasoning.strip() else "No reasoning provided"
         return GuidanceEvalResult(reasoning=reasoning, score=clamped_score)
 
     async def _evaluate_scope(self, input: InputGuidanceEval) -> IsInScopeReasoning:
         """Determine if the request is in scope or not given the assistant's capabilities."""
         user_prompt = render(
             SCOPE_USER_PROMPT,
-            conversation_history=input.conversation_history_beginning_turn, capability_manifest=self.config.capability_manifest,
+            conversation_history=input.conversation_history_beginning_turn,
+            capability_manifest=self.config.capability_manifest,
         )
         messages: list = [
             EasyInputMessageParam(role="system", content=SCOPE_SYSTEM_PROMPT),
@@ -280,13 +270,12 @@ class GuidanceEvaluator:
             )
         return response.output_parsed
 
-    async def _evaluate_graceful_failure(
-        self, input: InputGuidanceEval
-    ) -> GuidanceEvalResult:
+    async def _evaluate_graceful_failure(self, input: InputGuidanceEval) -> GuidanceEvalResult:
         """Determine if the assistant gracefully handled the out-of-scope request."""
         user_prompt = render(
             EVAL_USER_PROMPT,
-            conversation_history=input.conversation_history_full, capability_manifest=self.config.capability_manifest,
+            conversation_history=input.conversation_history_full,
+            capability_manifest=self.config.capability_manifest,
         )
 
         messages: list = [
@@ -302,14 +291,10 @@ class GuidanceEvaluator:
             )
 
         if response.output_parsed is None:
-            return GuidanceEvalResult(
-                reasoning="Failed to parse evaluation result", score=SCORE_MIN
-            )
+            return GuidanceEvalResult(reasoning="Failed to parse evaluation result", score=SCORE_MIN)
         return response.output_parsed
 
-    def _feedback(
-        self, results: OutputGuidanceEval, score_threshold: float = 50
-    ) -> str | None:
+    def _feedback(self, results: OutputGuidanceEval, score_threshold: float = 50) -> str | None:
         """If the request was out of scope and the assistant handled it poorly (below score_threshold),
         then return the reasoning as the feedback.
         """

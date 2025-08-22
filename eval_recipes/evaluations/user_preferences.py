@@ -31,15 +31,9 @@ class InputUserPreferences(BaseModel):
 
 # This is for structured outputs
 class UserPreference(BaseModel):
-    start_line: int = Field(
-        description="The line number where the user preference starts in the conversation history."
-    )
-    end_line: int = Field(
-        description="The line number where the user preference ends in the conversation history."
-    )
-    preference: str = Field(
-        description="The user preference extracted from the conversation history."
-    )
+    start_line: int = Field(description="The line number where the user preference starts in the conversation history.")
+    end_line: int = Field(description="The line number where the user preference ends in the conversation history.")
+    preference: str = Field(description="The user preference extracted from the conversation history.")
 
 
 # This is for structured outputs
@@ -155,16 +149,10 @@ class UserPreferencesEvaluator:
     ) -> None:
         self.config = config or BaseEvaluationConfig()
 
-    async def evaluate(
-        self, messages: ResponseInputParam, tools: list[ChatCompletionToolParam]
-    ) -> EvaluationOutput:
+    async def evaluate(self, messages: ResponseInputParam, tools: list[ChatCompletionToolParam]) -> EvaluationOutput:
         input_data = InputUserPreferences(
-            conversation_history_full=format_full_history(
-                messages, remove_system_messages=False
-            ),
-            conversation_history_beginning_turn=format_full_history(
-                messages, only_upto_last_user=True
-            ),
+            conversation_history_full=format_full_history(messages, remove_system_messages=False),
+            conversation_history_beginning_turn=format_full_history(messages, only_upto_last_user=True),
         )
         results = await self.run(input_data)
         # Applicable is True if adherence_to_preferences is not empty
@@ -175,13 +163,8 @@ class UserPreferencesEvaluator:
             score=results.score,
             feedback=self._feedback(results),
             metadata={
-                "extracted_user_preferences": results.extracted_user_preferences.model_dump(
-                    mode="json"
-                ),
-                "adherence_to_preferences": [
-                    item.model_dump(mode="json")
-                    for item in results.adherence_to_preferences
-                ],
+                "extracted_user_preferences": results.extracted_user_preferences.model_dump(mode="json"),
+                "adherence_to_preferences": [item.model_dump(mode="json") for item in results.adherence_to_preferences],
             },
         )
         return output
@@ -191,9 +174,7 @@ class UserPreferencesEvaluator:
         result = await self._score_preferences(preferences, input)
         return result
 
-    async def _extract_preferences(
-        self, input: InputUserPreferences
-    ) -> ExtractedUserPreferences:
+    async def _extract_preferences(self, input: InputUserPreferences) -> ExtractedUserPreferences:
         # Add line numbers to conversation history with aligned formatting
         lines = input.conversation_history_beginning_turn.split("\n")
         total_lines = len(lines)
@@ -233,7 +214,8 @@ class UserPreferencesEvaluator:
         for preference in preferences.preferences:
             user_prompt = render(
                 SCORING_USER_PROMPT,
-                conversation_history_full=input.conversation_history_full, preference=preference.preference,
+                conversation_history_full=input.conversation_history_full,
+                preference=preference.preference,
             )
             messages: list = [
                 {"role": "system", "content": SCORING_SYSTEM_PROMPT},
@@ -260,9 +242,7 @@ class UserPreferencesEvaluator:
 
         # Calculate score only from applicable preferences (exclude "not_applicable")
         applicable_adherences = [
-            adherence
-            for adherence in preference_adherences
-            if adherence.determination != "not_applicable"
+            adherence for adherence in preference_adherences if adherence.determination != "not_applicable"
         ]
 
         score = 0
@@ -290,9 +270,7 @@ class UserPreferencesEvaluator:
 
         """
         violations = [
-            adherence
-            for adherence in results.adherence_to_preferences
-            if adherence.determination == "did_not_adhere"
+            adherence for adherence in results.adherence_to_preferences if adherence.determination == "did_not_adhere"
         ]
         if not violations:
             return None

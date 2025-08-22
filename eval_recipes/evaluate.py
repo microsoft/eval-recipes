@@ -24,7 +24,7 @@ async def evaluate(
     messages: ResponseInputParam,
     tools: list[ChatCompletionToolParam],
     evaluations: list[str | type[EvaluatorProtocol]],
-    evaluation_configs: dict[str, BaseEvaluationConfig] = {},
+    evaluation_configs: dict[str, BaseEvaluationConfig] | None = None,
     max_concurrency: int = 1,
 ) -> list[EvaluationOutput]:
     """
@@ -45,6 +45,9 @@ async def evaluate(
         A list of EvaluationOutput objects containing the evaluation results.
         Each object includes the evaluation name, score, and optional metadata specific to that evaluation.
     """
+    if evaluation_configs is None:
+        evaluation_configs = {}
+
     evaluator_map: dict[str, tuple[type, type[BaseEvaluationConfig]]] = {
         "guidance": (GuidanceEvaluator, GuidanceEvaluationConfig),
         "preference_adherence": (UserPreferencesEvaluator, BaseEvaluationConfig),
@@ -71,12 +74,8 @@ async def evaluate(
             # Handle custom evaluator classes
             else:
                 # Check if the class implements the required protocol
-                if not isinstance(eval_item, type) or not issubclass(
-                    eval_item, EvaluatorProtocol
-                ):
-                    raise ValueError(
-                        f"Custom evaluator {eval_item} must be a class that implements EvaluatorProtocol"
-                    )
+                if not isinstance(eval_item, type) or not issubclass(eval_item, EvaluatorProtocol):
+                    raise ValueError(f"Custom evaluator {eval_item} must be a class that implements EvaluatorProtocol")
                 # Get config using the class name
                 class_name = eval_item.__name__
                 config = evaluation_configs.get(class_name)

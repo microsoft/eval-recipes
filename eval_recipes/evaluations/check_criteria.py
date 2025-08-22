@@ -17,9 +17,7 @@ from eval_recipes.utils.responses_conversion import extract_last_msg, format_ful
 
 
 class CheckCriteriaEvaluationConfig(BaseEvaluationConfig):
-    criteria: list[str] = Field(
-        description="A list of criteria or rubrics to evaluate the assistant's responses."
-    )
+    criteria: list[str] = Field(description="A list of criteria or rubrics to evaluate the assistant's responses.")
     passed_threshold: float = Field(
         default=75,
         description="Score from 0 to 100, indicating the minimum score to consider the criterion as satisfied. Used when creating feedback.",
@@ -81,9 +79,7 @@ class CheckCriteriaEvaluator:
     ) -> None:
         self.config = config or CheckCriteriaEvaluationConfig(criteria=[])
 
-    async def evaluate(
-        self, messages: ResponseInputParam, tools: list[ChatCompletionToolParam]
-    ) -> EvaluationOutput:
+    async def evaluate(self, messages: ResponseInputParam, tools: list[ChatCompletionToolParam]) -> EvaluationOutput:
         if not self.config.criteria:
             return EvaluationOutput(
                 eval_name="check_criteria",
@@ -94,9 +90,7 @@ class CheckCriteriaEvaluator:
             )
 
         final_response = extract_last_msg(messages, role="assistant")
-        conversation_history = format_full_history(
-            messages, remove_system_messages=True, remove_last_assistant=True
-        )
+        conversation_history = format_full_history(messages, remove_system_messages=True, remove_last_assistant=True)
 
         semaphore = asyncio.Semaphore(self.config.max_concurrency)
 
@@ -108,9 +102,7 @@ class CheckCriteriaEvaluator:
                     criterion=criterion,
                 )
 
-        evaluation_tasks = [
-            evaluate_with_limit(criterion) for criterion in self.config.criteria
-        ]
+        evaluation_tasks = [evaluate_with_limit(criterion) for criterion in self.config.criteria]
         evaluations = await asyncio.gather(*evaluation_tasks)
         results = list(zip(self.config.criteria, evaluations, strict=False))
 
@@ -146,7 +138,9 @@ class CheckCriteriaEvaluator:
         """Evaluate a single criterion against the assistant's response."""
         user_prompt = render(
             CRITERIA_USER_PROMPT,
-            conversation_history=conversation_history, final_response=final_response, criterion=criterion,
+            conversation_history=conversation_history,
+            final_response=final_response,
+            criterion=criterion,
         )
 
         messages: list = [
@@ -177,12 +171,8 @@ class CheckCriteriaEvaluator:
         if not failed:
             return None
 
-        feedback_parts = [
-            "The following criteria were not satisfied by the assistant's response:"
-        ]
+        feedback_parts = ["The following criteria were not satisfied by the assistant's response:"]
         for criterion, result in failed:
-            feedback_parts.append(
-                f"<criterion>{criterion}</criterion>\n<reasoning>{result.reasoning}</reasoning>"
-            )
+            feedback_parts.append(f"<criterion>{criterion}</criterion>\n<reasoning>{result.reasoning}</reasoning>")
 
         return "\n".join(feedback_parts)

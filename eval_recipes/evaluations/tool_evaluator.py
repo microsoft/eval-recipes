@@ -23,19 +23,13 @@ PROBABILITY_MAX = 100
 # This class for Structured Outputs only.
 class ToolProbability(BaseModel):
     tool_name: str = Field(description="The name of the tool being evaluated.")
-    reasoning: str = Field(
-        description="Your reasoning for why or why not the tool should be called."
-    )
-    probability: float = Field(
-        description=f"The probability from {PROBABILITY_SCALE} that the tool should be called."
-    )
+    reasoning: str = Field(description="Your reasoning for why or why not the tool should be called.")
+    probability: float = Field(description=f"The probability from {PROBABILITY_SCALE} that the tool should be called.")
 
 
 # This class for Structured Outputs only.
 class ToolEvaluation(BaseModel):
-    tool_evaluations: list[ToolProbability] = Field(
-        description="A list of evaluations for each tool."
-    )
+    tool_evaluations: list[ToolProbability] = Field(description="A list of evaluations for each tool.")
 
 
 class InputTool(BaseModel):
@@ -54,9 +48,9 @@ class InputToolEvaluator(BaseModel):
 class OutputToolEvaluator(BaseModel):
     tool_evaluations: ToolEvaluation
     # Score: 100 if the called tool (if any) has probability >= its threshold, 0 otherwise
-    # - true positives: cases where the probability ≥ threshold and the true label is 1.
+    # - true positives: cases where the probability >= threshold and the true label is 1.
     # - false negatives: cases where the probability < threshold and the true label is 1.
-    # - false positives: cases where the probability ≥ threshold and the true label is 0.
+    # - false positives: cases where the probability >= threshold and the true label is 0.
     # - beta = 2, so recall is twice as important as precision.
     # This is making the assumption that calling too many tools is fine - Consider F1 or Fβ
     score: float
@@ -102,9 +96,7 @@ class ToolEvaluator:
         """
         self.config = config or ToolEvaluationConfig()
 
-    async def evaluate(
-        self, messages: ResponseInputParam, tools: list[ChatCompletionToolParam]
-    ) -> EvaluationOutput:
+    async def evaluate(self, messages: ResponseInputParam, tools: list[ChatCompletionToolParam]) -> EvaluationOutput:
         # If no tools are provided, return not applicable
         if not tools:
             return EvaluationOutput(
@@ -121,18 +113,14 @@ class ToolEvaluator:
                 tool_name=tool_name,
                 tool_text=tool_info,
                 was_called=tools_called.get(tool_name, False),
-                threshold=self.config.tool_thresholds.get(
-                    tool_name, 50
-                ),  # Default to 50 if not specified
+                threshold=self.config.tool_thresholds.get(tool_name, 50),  # Default to 50 if not specified
             )
             for tool_name, tool_info in tool_infos.items()
         ]
         input_data = InputToolEvaluator(
             tools=input_tools,
             # TODO: Consider making this also include any subsequent assistant messages
-            conversation_history_full=format_full_history(
-                messages, only_upto_last_user=True
-            ),
+            conversation_history_full=format_full_history(messages, only_upto_last_user=True),
         )
         results = await self.run(input_data)
         output = EvaluationOutput(
@@ -140,16 +128,15 @@ class ToolEvaluator:
             applicable=True,
             score=results.score,
             feedback=self._feedback(results, input_data),
-            metadata={
-                "tool_evaluations": results.tool_evaluations.model_dump(mode="json")
-            },
+            metadata={"tool_evaluations": results.tool_evaluations.model_dump(mode="json")},
         )
         return output
 
     async def run(self, input: InputToolEvaluator) -> OutputToolEvaluator:
         user_prompt = render(
             MISSED_TOOL_USER_PROMPT,
-            conversation=input.conversation_history_full, tools=self._format_tools(input),
+            conversation=input.conversation_history_full,
+            tools=self._format_tools(input),
         )
         messages: list = [
             EasyInputMessageParam(role="system", content=MISSED_TOOL_SYSTEM_PROMPT),
@@ -182,9 +169,7 @@ class ToolEvaluator:
             tools_xml += "</tool>\n\n"
         return tools_xml.strip()
 
-    def _validate_tool_evaluation(
-        self, result: ToolEvaluation, input: InputToolEvaluator
-    ) -> ToolEvaluation:
+    def _validate_tool_evaluation(self, result: ToolEvaluation, input: InputToolEvaluator) -> ToolEvaluation:
         """Validate and fix tool evaluation results.
 
         Applies these validation rules:
@@ -196,9 +181,7 @@ class ToolEvaluator:
         evaluated_tool_names = set()
         for tool_eval in result.tool_evaluations:
             # Clamp probability to valid range
-            clamped_probability = max(
-                PROBABILITY_MIN, min(PROBABILITY_MAX, tool_eval.probability)
-            )
+            clamped_probability = max(PROBABILITY_MIN, min(PROBABILITY_MAX, tool_eval.probability))
 
             validated_evaluations.append(
                 ToolProbability(
@@ -222,9 +205,7 @@ class ToolEvaluator:
 
         return ToolEvaluation(tool_evaluations=validated_evaluations)
 
-    def _compute_metric(
-        self, tool_evaluations: ToolEvaluation, input: InputToolEvaluator
-    ) -> float:
+    def _compute_metric(self, tool_evaluations: ToolEvaluation, input: InputToolEvaluator) -> float:
         """
         - If no tools should be called (was_called=False for all)
           - Each probability should be below the threshold. If so, return 100, 0 otherwise.
@@ -242,9 +223,7 @@ class ToolEvaluator:
         called_tools = [tool for tool in input.tools if tool.was_called]
 
         # Create a mapping of tool evaluations by name for easier lookup
-        eval_by_name = {
-            eval.tool_name: eval for eval in tool_evaluations.tool_evaluations
-        }
+        eval_by_name = {eval.tool_name: eval for eval in tool_evaluations.tool_evaluations}
 
         # Case 1: No tools should be called (was_called=False for all)
         if len(called_tools) == 0:
@@ -263,28 +242,21 @@ class ToolEvaluator:
             for called_tool in called_tools:
                 tool_eval = eval_by_name.get(called_tool.tool_name)
 
-                if tool_eval is None:
-                    probability = 0.0
-                else:
-                    probability = tool_eval.probability
+                probability = 0.0 if tool_eval is None else tool_eval.probability
 
                 if probability >= called_tool.threshold:
                     return 100.0
 
             return 0.0
 
-    def _feedback(
-        self, results: OutputToolEvaluator, input: InputToolEvaluator
-    ) -> str | None:
+    def _feedback(self, results: OutputToolEvaluator, input: InputToolEvaluator) -> str | None:
         """Writes a string that states what tool should have been or not been called
         based on the output of the evaluator.
         Case 1: If no tools should be called, but tools were called, state that no tools should have been called.
         Case 2: If a tool should have been called, but none or a different one was called, state which tool(s) could be called.
         """
         called_tools = [tool for tool in input.tools if tool.was_called]
-        eval_by_name = {
-            eval.tool_name: eval for eval in results.tool_evaluations.tool_evaluations
-        }
+        eval_by_name = {eval.tool_name: eval for eval in results.tool_evaluations.tool_evaluations}
 
         # Case 1
         if len(called_tools) == 0:
@@ -297,13 +269,9 @@ class ToolEvaluator:
 
             # If there are tools above threshold, we should have called them (score would be 0)
             if tools_above_threshold:
-                feedback_parts = [
-                    "Based on the conversation context, the following tool(s) could have been called:"
-                ]
+                feedback_parts = ["Based on the conversation context, the following tool(s) could have been called:"]
                 for tool_name, reasoning in tools_above_threshold:
-                    feedback_parts.append(
-                        f"<tool>{tool_name}</tool>\n<reasoning>{reasoning}</reasoning>\n"
-                    )
+                    feedback_parts.append(f"<tool>{tool_name}</tool>\n<reasoning>{reasoning}</reasoning>\n")
                 return "\n".join(feedback_parts).strip()
 
         # Case 2: One or more tools were called (was_called=True for any tools)
@@ -320,18 +288,14 @@ class ToolEvaluator:
             for tool in input.tools:
                 tool_eval = eval_by_name.get(tool.tool_name)
                 if tool_eval and tool_eval.probability >= tool.threshold:
-                    tools_that_should_be_called.append(
-                        (tool.tool_name, tool_eval.reasoning)
-                    )
+                    tools_that_should_be_called.append((tool.tool_name, tool_eval.reasoning))
 
             if tools_that_should_be_called:
                 feedback_parts = [
                     "Based on the conversation context, the following tool(s) should have been called instead:"
                 ]
                 for tool_name, reasoning in tools_that_should_be_called:
-                    feedback_parts.append(
-                        f"<tool>{tool_name}</tool>\n<reasoning>{reasoning}</reasoning>\n"
-                    )
+                    feedback_parts.append(f"<tool>{tool_name}</tool>\n<reasoning>{reasoning}</reasoning>\n")
                 return "\n".join(feedback_parts).strip()
             else:
                 # No tools should have been called

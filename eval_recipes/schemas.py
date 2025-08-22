@@ -12,12 +12,8 @@ class EvaluationOutput(BaseModel):
     eval_name: str  # Name of the evaluation
     applicable: bool  # Was the evaluation applicable
     score: float  # Score from 0 to 100
-    feedback: str | None = (
-        None  # Feedback that can be used as part of another system to self-improve the response.
-    )
-    metadata: dict[
-        str, Any
-    ] = {}  # Any additional metadata the evaluation may generate.
+    feedback: str | None = None  # Feedback that can be used as part of another system to self-improve the response.
+    metadata: dict[str, Any] = {}  # Any additional metadata the evaluation may generate.
 
 
 # region Eval Configurations
@@ -45,15 +41,9 @@ class ToolEvaluationConfig(BaseEvaluationConfig):
 
 
 class ClaimVerifierConfig(BaseEvaluationConfig):
-    claim_extraction_model: Literal[
-        "gpt-5", "gpt-5-mini", "gpt-5-nano", "o3", "o4-mini"
-    ] = Field(default="gpt-5-mini")
-    verification_model: Literal[
-        "gpt-5", "gpt-5-mini", "gpt-5-nano", "o3", "o4-mini"
-    ] = Field(default="gpt-5")
-    verification_reasoning_effort: Literal["minimal", "low", "medium", "high"] = Field(
-        default="high"
-    )
+    claim_extraction_model: Literal["gpt-5", "gpt-5-mini", "gpt-5-nano", "o3", "o4-mini"] = Field(default="gpt-5-mini")
+    verification_model: Literal["gpt-5", "gpt-5-mini", "gpt-5-nano", "o3", "o4-mini"] = Field(default="gpt-5")
+    verification_reasoning_effort: Literal["minimal", "low", "medium", "high"] = Field(default="high")
     max_line_length: int = Field(default=200)
     max_concurrency: int = Field(default=1)
     ignore_tool_names: list[str] = Field(
@@ -75,8 +65,6 @@ class EvaluatorProtocol(Protocol):
         """
         ...
 
-    async def evaluate(
-        self, messages: ResponseInputParam, tools: list[ChatCompletionToolParam]
-    ) -> EvaluationOutput:
+    async def evaluate(self, messages: ResponseInputParam, tools: list[ChatCompletionToolParam]) -> EvaluationOutput:
         """Evaluate messages and tools, returning an EvaluationOutput."""
         ...
