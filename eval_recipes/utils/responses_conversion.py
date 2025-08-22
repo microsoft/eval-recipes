@@ -53,11 +53,7 @@ def format_full_history(
     for item in messages:
         if isinstance(item, dict):
             # Handle system, user, and assistant messages
-            if (
-                "role" in item
-                and "content" in item
-                and item.get("type") != "function_call"
-            ):
+            if "role" in item and "content" in item and item.get("type") != "function_call":
                 role = item["role"]
 
                 if remove_system_messages and role == "system":
@@ -74,10 +70,7 @@ def format_full_history(
                         if isinstance(content_item, dict):
                             if "text" in content_item:
                                 text_parts.append(content_item["text"])
-                            elif (
-                                "type" in content_item
-                                and content_item["type"] == "input_text"
-                            ):
+                            elif "type" in content_item and content_item["type"] == "input_text":
                                 text_parts.append(content_item.get("text", ""))
                     text = "\n".join(text_parts)
                 else:
@@ -97,9 +90,7 @@ def format_full_history(
             elif item_type == "function_call_output":
                 call_id = item.get("call_id", "")
                 output = item.get("output", "")
-                formatted_parts.append(
-                    f'<function_call_output call_id="{call_id}">\n{output}\n</function_call_output>'
-                )
+                formatted_parts.append(f'<function_call_output call_id="{call_id}">\n{output}\n</function_call_output>')
 
     return "\n".join(formatted_parts)
 
@@ -184,9 +175,7 @@ def extract_tool_info(tools: list[ChatCompletionToolParam]) -> dict[str, str]:
                     # Indent each line for better XML formatting
                     params_lines = params_json.split("\n")
                     params_indented = "\n".join("    " + line for line in params_lines)
-                    xml_parts.append(
-                        f"  <parameters>\n{params_indented}\n  </parameters>"
-                    )
+                    xml_parts.append(f"  <parameters>\n{params_indented}\n  </parameters>")
 
                 xml_parts.append("</tool>")
                 tool_info[name] = "\n".join(xml_parts)
@@ -194,9 +183,7 @@ def extract_tool_info(tools: list[ChatCompletionToolParam]) -> dict[str, str]:
     return tool_info
 
 
-def extract_last_msg(
-    messages: ResponseInputParam, role: Literal["assistant", "user"]
-) -> str:
+def extract_last_msg(messages: ResponseInputParam, role: Literal["assistant", "user"]) -> str:
     """
     Extract the content of the last message of the given role.
 
@@ -210,35 +197,31 @@ def extract_last_msg(
     """
     # Iterate through messages in reverse to find the last message with the specified role
     for item in reversed(messages):
-        if isinstance(item, dict):
-            # Check if this is a message with the desired role
-            if item.get("role") == role:
-                content = item.get("content", "")
+        if isinstance(item, dict) and item.get("role") == role:
+            content = item.get("content", "")
 
-                # Handle content that might be a string or list
-                if isinstance(content, str):
-                    return content
-                elif isinstance(content, list):
-                    # Extract only the first text item from the content list
-                    for content_item in content:
-                        if isinstance(content_item, dict):
-                            # Check for different text field names
-                            if "text" in content_item:
-                                return content_item["text"]
-                            elif content_item.get("type") == "input_text" or content_item.get("type") == "output_text":
-                                return content_item.get("text", "")
-                    return ""  # No text found in any content item
-                else:
-                    return str(content)
+            # Handle content that might be a string or list
+            if isinstance(content, str):
+                return content
+            elif isinstance(content, list):
+                # Extract only the first text item from the content list
+                for content_item in content:
+                    if isinstance(content_item, dict):
+                        # Check for different text field names
+                        if "text" in content_item:
+                            return content_item["text"]
+                        elif content_item.get("type") == "input_text" or content_item.get("type") == "output_text":
+                            return content_item.get("text", "")
+                return ""  # No text found in any content item
+            else:
+                return str(content)
 
     return ""
 
 
 def format_messages_as_context(
     messages: ResponseInputParam,
-    ignore_roles: list[
-        Literal["assistant", "system", "user", "function_call", "function_call_output"]
-    ],
+    ignore_roles: list[Literal["assistant", "system", "user", "function_call", "function_call_output"]],
     ignore_tool_names: list[str],
 ) -> list[dict[str, str]]:
     """
@@ -324,10 +307,7 @@ def format_messages_as_context(
                     )
 
             # Handle function call outputs
-            elif (
-                item_type == "function_call_output"
-                and "function_call_output" not in ignore_roles
-            ):
+            elif item_type == "function_call_output" and "function_call_output" not in ignore_roles:
                 call_id = item.get("call_id", "")
                 output = item.get("output", "")
                 # Check if this output's tool should be ignored
@@ -375,23 +355,17 @@ def convert_chat_completion_to_responses(
             content_list = []
             if isinstance(content, str):
                 if content:  # Only add if not empty
-                    content_list.append(
-                        ResponseInputTextParam(type="input_text", text=content)
-                    )
+                    content_list.append(ResponseInputTextParam(type="input_text", text=content))
             elif isinstance(content, list):
                 # Handle list of content parts
                 for part in content:
                     if isinstance(part, dict) and part.get("type") == "text":
                         text = part.get("text", "")
                         if text:
-                            content_list.append(
-                                ResponseInputTextParam(type="input_text", text=text)
-                            )
+                            content_list.append(ResponseInputTextParam(type="input_text", text=text))
 
             if content_list:  # Only add message if it has content
-                response_items.append(
-                    {"type": "message", "role": role, "content": content_list}
-                )
+                response_items.append({"type": "message", "role": role, "content": content_list})
 
         # Handle Assistant messages
         elif role == "assistant":
@@ -400,17 +374,13 @@ def convert_chat_completion_to_responses(
             if content:
                 content_list = []
                 if isinstance(content, str):
-                    content_list.append(
-                        ResponseInputTextParam(type="input_text", text=content)
-                    )
+                    content_list.append(ResponseInputTextParam(type="input_text", text=content))
                 elif isinstance(content, list):
                     for part in content:
                         if isinstance(part, dict) and part.get("type") == "text":
                             text = part.get("text", "")
                             if text:
-                                content_list.append(
-                                    ResponseInputTextParam(type="input_text", text=text)
-                                )
+                                content_list.append(ResponseInputTextParam(type="input_text", text=text))
 
                 if content_list:
                     response_items.append(

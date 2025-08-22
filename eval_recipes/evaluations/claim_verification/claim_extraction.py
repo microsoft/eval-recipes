@@ -28,9 +28,7 @@ class InputClaimExtraction(BaseModel):
 
 class OutputSelectionStep(BaseModel):
     has_verifiable_claims: bool  # Does the sentence have any verifiable claims?
-    sentence_for_next_step: str | None = (
-        None  # The sentence to be used in the next step, if applicable
-    )
+    sentence_for_next_step: str | None = None  # The sentence to be used in the next step, if applicable
 
 
 class OutputDisambiguationStep(BaseModel):
@@ -57,9 +55,7 @@ class DisambiguationResult(BaseModel):
     linguistic_ambiguity_reasoning: str
     changes_needed_reasoning: str
     changes_needed: bool
-    decontextualized_sentences: list[
-        str
-    ]  # The final decontextualized sentence or collection of sentences
+    decontextualized_sentences: list[str]  # The final decontextualized sentence or collection of sentences
 
 
 # This class for Structured Outputs only.
@@ -89,33 +85,25 @@ class ClaimExtraction:
 
         results = await self._process_sentence(self.input_data.sentence, sentence_text)
 
-        logger.info(
-            f"Claim extraction complete. Total claims extracted: {len(results) if results else 0}"
-        )
+        logger.info(f"Claim extraction complete. Total claims extracted: {len(results) if results else 0}")
         return results if results else []
 
     async def _process_sentence(self, sentence: str, context: str) -> list[str] | None:
         """Process a single sentence."""
         selection_result = await self._selection()
-        logger.info(
-            f"Selection result: has_verifiable_claims={selection_result.has_verifiable_claims}"
-        )
+        logger.info(f"Selection result: has_verifiable_claims={selection_result.has_verifiable_claims}")
 
         if not selection_result.has_verifiable_claims:
             return None
 
         disambiguation = await self._disambiguation(selection_result, context)
-        logger.info(
-            f"Disambiguation result: {len(disambiguation.disambiguated_sentences)} disambiguated sentences"
-        )
+        logger.info(f"Disambiguation result: {len(disambiguation.disambiguated_sentences)} disambiguated sentences")
 
         if not disambiguation.disambiguated_sentences:
             return None
 
         decomposition = await self._decomposition(disambiguation, context)
-        logger.info(
-            f"Decomposition result: {len(decomposition.claims)} claims extracted"
-        )
+        logger.info(f"Decomposition result: {len(decomposition.claims)} claims extracted")
 
         sentence_results: list[str] = []
         for claim in decomposition.claims:
@@ -125,7 +113,9 @@ class ClaimExtraction:
     async def _selection(self) -> OutputSelectionStep:
         user_prompt = render(
             SELECTION_USER_PROMPT,
-            question=self.input_data.user_question, excerpt=self.input_data.excerpt, sentence=self.input_data.sentence,
+            question=self.input_data.user_question,
+            excerpt=self.input_data.excerpt,
+            sentence=self.input_data.sentence,
         )
         messages: list = [
             EasyInputMessageParam(role="system", content=SELECTION_SYSTEM_PROMPT),
@@ -146,17 +136,14 @@ class ClaimExtraction:
             sentence_for_next_step = None
         else:
             has_verifiable_claims = (
-                response.output_parsed.final_submission
-                == "Contains a specific and verifiable proposition"
+                response.output_parsed.final_submission == "Contains a specific and verifiable proposition"
             )
             sentence_for_next_step = None
             if response.output_parsed.sentence_with_verifiable_info not in (
                 "None",
                 "remains unchanged",
             ):
-                sentence_for_next_step = (
-                    response.output_parsed.sentence_with_verifiable_info
-                )
+                sentence_for_next_step = response.output_parsed.sentence_with_verifiable_info
             else:
                 sentence_for_next_step = self.input_data.sentence
 
@@ -166,12 +153,12 @@ class ClaimExtraction:
         )
         return result
 
-    async def _disambiguation(
-        self, selection_result: OutputSelectionStep, context: str
-    ) -> OutputDisambiguationStep:
+    async def _disambiguation(self, selection_result: OutputSelectionStep, context: str) -> OutputDisambiguationStep:
         user_prompt = render(
             DISAMBIGUATION_USER_PROMPT,
-            question=self.input_data.user_question, excerpt=context, sentence=selection_result.sentence_for_next_step,
+            question=self.input_data.user_question,
+            excerpt=context,
+            sentence=selection_result.sentence_for_next_step,
         )
         messages: list = [
             EasyInputMessageParam(role="system", content=DISAMBIGUATION_SYSTEM_PROMPT),
@@ -186,9 +173,7 @@ class ClaimExtraction:
             )
             if response.output_parsed is None:
                 return OutputDisambiguationStep(disambiguated_sentences=[])
-            return OutputDisambiguationStep(
-                disambiguated_sentences=response.output_parsed.decontextualized_sentences
-            )
+            return OutputDisambiguationStep(disambiguated_sentences=response.output_parsed.decontextualized_sentences)
 
     async def _decomposition(
         self, disambiguation_result: OutputDisambiguationStep, context: str
@@ -197,12 +182,12 @@ class ClaimExtraction:
         for disambiguated_sentence in disambiguation_result.disambiguated_sentences:
             user_prompt = render(
                 DECOMPOSITION_USER_PROMPT,
-                question=self.input_data.user_question, excerpt=context, sentence=disambiguated_sentence,
+                question=self.input_data.user_question,
+                excerpt=context,
+                sentence=disambiguated_sentence,
             )
             messages: list = [
-                EasyInputMessageParam(
-                    role="system", content=DECOMPOSITION_SYSTEM_PROMPT
-                ),
+                EasyInputMessageParam(role="system", content=DECOMPOSITION_SYSTEM_PROMPT),
                 EasyInputMessageParam(role="user", content=user_prompt),
             ]
             async with create_client(provider=self.config.provider) as client:

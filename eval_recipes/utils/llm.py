@@ -27,9 +27,7 @@ async def create_client(
             # Automatically choose between API key and Entra ID based on environment
             azure_endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
             if not azure_endpoint:
-                raise ValueError(
-                    "AZURE_OPENAI_ENDPOINT environment variable is required for Azure OpenAI"
-                )
+                raise ValueError("AZURE_OPENAI_ENDPOINT environment variable is required for Azure OpenAI")
 
             azure_api_key = os.environ.get("AZURE_OPENAI_API_KEY")
             if azure_api_key:

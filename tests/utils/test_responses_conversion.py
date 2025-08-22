@@ -21,11 +21,7 @@ def sample_messages() -> ResponseInputParam:
         Message(
             role="system",
             type="message",
-            content=[
-                ResponseInputTextParam(
-                    type="input_text", text="You are a helpful AI assistant."
-                )
-            ],
+            content=[ResponseInputTextParam(type="input_text", text="You are a helpful AI assistant.")],
         ),
         EasyInputMessageParam(role="user", content="What's the weather like?"),
         ResponseFunctionToolCallParam(
@@ -61,7 +57,7 @@ def sample_messages() -> ResponseInputParam:
 
 
 @pytest.mark.parametrize(
-    "remove_system_messages,only_upto_last_user,test_name",
+    ("remove_system_messages", "only_upto_last_user", "test_name"),
     [
         (False, False, "Default - all messages"),
         (True, False, "Remove system messages"),
@@ -78,9 +74,7 @@ def test_format_full_history_parameters(
     """Test format_full_history with different parameter combinations using parametrize."""
     print(f"\n{'=' * 60}")
     print(f"Test: {test_name}")
-    print(
-        f"Parameters: remove_system_messages={remove_system_messages}, only_upto_last_user={only_upto_last_user}"
-    )
+    print(f"Parameters: remove_system_messages={remove_system_messages}, only_upto_last_user={only_upto_last_user}")
     print(f"{'=' * 60}")
 
     result = format_full_history(
