@@ -36,25 +36,38 @@ jobs:
       - name: Export marimo notebooks to Jupyter format
         run: |
           source .venv/bin/activate
-          for notebook in demos/*.py; do
-            if [[ -f "$notebook" ]]; then
-              output="${notebook%.py}.ipynb"
-              echo "Exporting $notebook to $output"
-              uv run marimo export ipynb "$notebook" -o "$output"
-            fi
-          done
+          # Temporarily only export the last notebook for testing
+          notebook="demos/3_check_criteria.py"
+          if [[ -f "$notebook" ]]; then
+            output="${notebook%.py}.ipynb"
+            echo "Exporting $notebook to $output"
+            uv run marimo export ipynb "$notebook" -o "$output"
+          fi
+          # for notebook in demos/*.py; do
+          #   if [[ -f "$notebook" ]]; then
+          #     output="${notebook%.py}.ipynb"
+          #     echo "Exporting $notebook to $output"
+          #     uv run marimo export ipynb "$notebook" -o "$output"
+          #   fi
+          # done
       
       - name: Execute notebooks with outputs
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           source .venv/bin/activate
-          for notebook in demos/*.ipynb; do
-            if [[ -f "$notebook" ]]; then
-              echo "Executing $notebook"
-              jupyter execute --inplace --timeout=1000 --allow-errors "$notebook"
-            fi
-          done
+          # Temporarily only execute the last notebook for testing
+          notebook="demos/3_check_criteria.ipynb"
+          if [[ -f "$notebook" ]]; then
+            echo "Executing $notebook"
+            jupyter execute --inplace --timeout=1000 --allow-errors "$notebook"
+          fi
+          # for notebook in demos/*.ipynb; do
+          #   if [[ -f "$notebook" ]]; then
+          #     echo "Executing $notebook"
+          #     jupyter execute --inplace --timeout=1000 --allow-errors "$notebook"
+          #   fi
+          # done
       
       - name: Commit and push generated notebooks
         run: |
@@ -65,6 +78,12 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "Auto-generate Jupyter notebooks from marimo sources"
-            # Push to the branch that triggered the workflow
-            git push origin HEAD:${{ github.ref }}
+            # Push to the correct branch
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              # For PRs, push to the head branch
+              git push origin HEAD:refs/heads/${{ github.head_ref }}
+            else
+              # For pushes to main, push directly
+              git push origin HEAD:${{ github.ref }}
+            fi
           fi
