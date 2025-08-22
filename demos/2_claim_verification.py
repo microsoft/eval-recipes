@@ -323,12 +323,18 @@ def _(
         }
     )
 
-    FILE_CONTENT_1 = (
-        Path(__file__).parents[0] / "data" / "Earnings Release FY24 Q4.md"
-    ).read_text()
-    FILE_CONTENT_2 = (
-        Path(__file__).parents[0] / "data" / "Earnings Release FY25 Q4.md"
-    ).read_text()
+    # Handle both .py and .ipynb environments
+    import sys
+    try:
+        data_path_1 = Path(__file__).parents[0] / "data" / "Earnings Release FY24 Q4.md"
+        data_path_2 = Path(__file__).parents[0] / "data" / "Earnings Release FY25 Q4.md"
+    except NameError:
+        # Fallback for Jupyter notebooks - use current working directory
+        data_path_1 = Path.cwd() / "data" / "Earnings Release FY24 Q4.md"
+        data_path_2 = Path.cwd() / "data" / "Earnings Release FY25 Q4.md"
+    
+    FILE_CONTENT_1 = data_path_1.read_text()
+    FILE_CONTENT_2 = data_path_2.read_text()
 
     FUNCTION_CALL_OUTPUT_2 = FunctionCallOutput(
         {

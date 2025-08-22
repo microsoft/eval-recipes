@@ -6,6 +6,11 @@ Each evaluation will analyze an LLMs's responses against the inputs that generat
 
 ## Get Started Quick!
 
+### (TODO) 1. View notebooks directly on GitHub
+
+Located in [demos/](./demos)
+
+### 2. Run notebooks with marimo
 
 Run demo notebooks (the `.py` files located at [demos/](./demos)) with [`marimo`](https://docs.marimo.io/getting_started/installation/).
 Follow the installation section below if you do not have `uv` installed or environment variables configured.
@@ -15,14 +20,14 @@ uv run marimo edit demos/1_evaluate.py
 # Select Y to run in a sandboxed venv
 ```
 
-Install the library with `uv`:
+### 3. Start using the package
 
 ```bash
 uv pip install "git+https://github.com/microsoft/eval-recipes"
 ```
 
 > [!WARNING]
-> This library is very early and everything is subject to change. Consider pinning the dependency.
+> This library is very early and everything is subject to change. Consider pinning the dependency to a commit.
 
 
 ## Installation
