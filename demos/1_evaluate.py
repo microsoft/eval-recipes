@@ -73,7 +73,6 @@ def _():
         GuidanceEvaluationConfig,
         ToolEvaluationConfig,
     )
-
     return (
         BaseEvaluationConfig,
         ChatCompletionToolParam,
@@ -91,14 +90,25 @@ def _():
 
 @app.cell(hide_code=True)
 def _(mo):
-    (
-        mo.md("# High Level API"),
-        mo.image("demos/data/Evaluate API Diagram.png"),
-        mo.md(
-            r"""Assistant evaluations exposes one high level function, `evaluate`, which expects the inputs you are already likely using in your assistant: chat messages and tool definitions. Specifically, we use the same parameters as the [OpenAI Responses API](https://platform.openai.com/docs/api-reference/responses/create#responses_create-input). We chose this because it is likely what you are already using and it is a common standard even for other LLM providers to support. It is also straighforward to write your own conversion from any other message and tool types.
-    """
-        ),
-    )
+    mo.md(r"""# High Level API
+
+    Assistant evaluations exposes one high level function, `evaluate`, which expects the inputs you are already likely using in your assistant: chat messages and tool definitions. Specifically, we use the same parameters as the [OpenAI Responses API](https://platform.openai.com/docs/api-reference/responses/create#responses_create-input). We chose this because it is likely what you are already using and it is a common standard even for other LLM providers to support. It is also straighforward to write your own conversion from any other message and tool types.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    # Handle both .py and .ipynb environments
+    try:
+        # In marimo environment, __file__ is available
+        __file__
+        image_path = "demos/data/Evaluate API Diagram.png"
+    except NameError:
+        # Fallback for Jupyter notebooks - use path relative to current directory
+        image_path = "data/Evaluate API Diagram.png"
+    
+    mo.image(image_path)
     return
 
 
@@ -323,13 +333,14 @@ def _(
 
     # Handle both .py and .ipynb environments
     import sys
+
     try:
         data_path = Path(__file__).parents[0] / "data" / "Earnings Release FY24 Q4.md"
     except NameError:
         # Fallback for Jupyter notebooks - use current working directory
         data_path = Path.cwd() / "data" / "Earnings Release FY24 Q4.md"
-    
-    FILE_CONTENT = data_path.read_text(encoding='utf-8')
+
+    FILE_CONTENT = data_path.read_text(encoding="utf-8")
 
     FUNCTION_CALL_OUTPUT_2 = FunctionCallOutput(
         {
@@ -561,28 +572,18 @@ def _(mo, results):
         )
 
     # Calculate average score for applicable evaluations
-    applicable_scores = [
-        item["score"]
-        for item in summary_data
-        if item["applicable"] and item["score"] is not None
-    ]
-    avg_score = (
-        sum(applicable_scores) / len(applicable_scores) if applicable_scores else 0
-    )
+    applicable_scores = [item["score"] for item in summary_data if item["applicable"] and item["score"] is not None]
+    avg_score = sum(applicable_scores) / len(applicable_scores) if applicable_scores else 0
 
     # Build summary table rows
     summary_rows = []
     for eval_data in summary_data:
         applicability = "Yes" if eval_data["applicable"] else "No"
         score_display = (
-            f"{eval_data['score']:.2f}%"
-            if eval_data["applicable"] and eval_data["score"] is not None
-            else "N/A"
+            f"{eval_data['score']:.2f}%" if eval_data["applicable"] and eval_data["score"] is not None else "N/A"
         )
 
-        summary_rows.append(
-            f"| **{eval_data['name']}** | {applicability} | {score_display} |"
-        )
+        summary_rows.append(f"| **{eval_data['name']}** | {applicability} | {score_display} |")
 
     summary_table = "\n".join(summary_rows)
 
@@ -612,14 +613,10 @@ def _(mo, results):
 
 @app.cell(hide_code=True)
 def _():
-    def render_evaluation_result(
-        title, result, custom_details="", no_data_message="No evaluation performed."
-    ):
+    def render_evaluation_result(title, result, custom_details="", no_data_message="No evaluation performed."):
         """Common function to render evaluation results."""
         applicable_text = "yes" if result.applicable else "no"
-        score_section = (
-            f"- **Overall Score: *{result.score:.2f}%***" if result.applicable else ""
-        )
+        score_section = f"- **Overall Score: *{result.score:.2f}%***" if result.applicable else ""
 
         return f"""
     ## {title}
@@ -629,10 +626,10 @@ def _():
     {custom_details if custom_details else f"*{no_data_message}*"}
     """
 
+
     def get_result_by_name(results, eval_name):
         """Helper to get result by evaluation name."""
         return next((x for x in results if x.eval_name == eval_name), None)
-
     return get_result_by_name, render_evaluation_result
 
 
@@ -653,11 +650,7 @@ def _(get_result_by_name, mo, render_evaluation_result, results):
     - Adherence Probability: *{adherence["adherence_probability"]:.1f}%*
     - Determination: *{adherence["determination"]}*""")
 
-    preferences_md = (
-        "\n---\n".join(preference_sections)
-        if preference_sections
-        else "No preferences evaluated."
-    )
+    preferences_md = "\n---\n".join(preference_sections) if preference_sections else "No preferences evaluated."
 
     # Build the details section only if applicable
     up_details = ""
@@ -772,9 +765,7 @@ def _(get_result_by_name, mo, render_evaluation_result, results):
         if claim.get("citations", []):
             citation_items = []
             for citation in claim["citations"]:
-                citation_items.append(
-                    f"Source {citation['source_id']}: *{citation.get('cited_text', 'N/A')}*"
-                )
+                citation_items.append(f"Source {citation['source_id']}: *{citation.get('cited_text', 'N/A')}*")
             citations_text = "\n    - " + "\n    - ".join(citation_items)
 
         cv_claims_sections.append(f"""**Claim {idx_cv + 1}:** *{claim.get("claim", "N/A")}*
@@ -789,11 +780,7 @@ def _(get_result_by_name, mo, render_evaluation_result, results):
     - **Proof:** *{claim.get("proof", "N/A") if claim.get("proof") else "No proof provided"}*
     {f"- **Open Domain Justification:** *{claim.get('open_domain_justification', '')}*" if claim.get("is_open_domain") else ""}""")
 
-    cv_claims_md = (
-        "\n---\n".join(cv_claims_sections)
-        if cv_claims_sections
-        else "*No claims evaluated.*"
-    )
+    cv_claims_md = "\n---\n".join(cv_claims_sections) if cv_claims_sections else "*No claims evaluated.*"
 
     # Build the final markdown
     cv_details = ""
@@ -826,11 +813,7 @@ def _(get_result_by_name, mo, render_evaluation_result, results):
     # Extract tool usage metadata
     tu_metadata = tu_result.metadata
     tu_evaluations = tu_metadata.get("tool_evaluations", {})
-    tu_tool_list = (
-        tu_evaluations.get("tool_evaluations", [])
-        if isinstance(tu_evaluations, dict)
-        else []
-    )
+    tu_tool_list = tu_evaluations.get("tool_evaluations", []) if isinstance(tu_evaluations, dict) else []
 
     # Build individual tool evaluations section
     tu_tool_sections = []
@@ -848,11 +831,7 @@ def _(get_result_by_name, mo, render_evaluation_result, results):
     - **Probability Should Be Called:** {probability_indicator} *{tool_probability:.1f}%*
     - **Reasoning:** *{tool_reasoning}*""")
 
-    tu_tools_md = (
-        "\n---\n".join(tu_tool_sections)
-        if tu_tool_sections
-        else "*No tools evaluated.*"
-    )
+    tu_tools_md = "\n---\n".join(tu_tool_sections) if tu_tool_sections else "*No tools evaluated.*"
 
     # Build the final markdown
     tu_details = ""
@@ -886,9 +865,7 @@ def _(mo, results):
     feedback_str = ""
     for f_result in results:
         if f_result.feedback:
-            feedback_str += (
-                f"**{f_result.eval_name}**:\n```plaintext\n{f_result.feedback}\n```\n\n"
-            )
+            feedback_str += f"**{f_result.eval_name}**:\n```plaintext\n{f_result.feedback}\n```\n\n"
     feedback_str.strip()
 
     mo.md(f"""# Feedback
