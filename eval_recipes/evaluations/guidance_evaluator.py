@@ -336,7 +336,7 @@ Create the capability manifest for this assistant."""
 async def generate_capability_manifest(
     system_prompt: str,
     tools: list[ChatCompletionToolParam] | None = None,
-    provider: Literal["openai", "azure_openai"] = "openai",
+    provider: Literal["openai", "openai"] = "openai",
     model: str = "gpt-5",
 ) -> str:
     """
@@ -347,7 +347,7 @@ async def generate_capability_manifest(
     Args:
         system_prompt: The system prompt that defines the assistant's behavior
         tools: List of tool definitions (optional)
-        provider: The AI provider to use ("openai" or "azure_openai")
+        provider: The AI provider to use ("openai" or "openai")
         model: The model to use for generation (default: "gpt-4o")
     """
     tools_description = "None"

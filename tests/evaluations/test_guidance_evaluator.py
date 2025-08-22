@@ -106,7 +106,7 @@ Ccould you tell me a bit more about what kind of story you have in mind?
 def config_with_manifest() -> GuidanceEvaluationConfig:
     """Config with pre-computed capability manifest."""
     return GuidanceEvaluationConfig(
-        provider="azure_openai",
+        provider="openai",
         model="gpt-5",
         capability_manifest="""You can help with text analysis, writing assistance, answering questions, and general conversation. \
 You do not have the ability to create external documents, access the internet, or generate real links to external services.""",
@@ -165,7 +165,7 @@ that you could then copy into Google Slides yourself. Would that be helpful?</me
     )
 
     config = GuidanceEvaluationConfig(
-        provider="azure_openai",
+        provider="openai",
         model="gpt-5",
         capability_manifest="""You can help with text analysis, writing assistance, answering questions, and general conversation. \
 You do not have the ability to create external documents, access the internet, or generate real links to external services.""",
@@ -185,7 +185,7 @@ answering questions, and general conversation."""
     manifest = await generate_capability_manifest(
         system_prompt=system_prompt,
         tools=[],
-        provider="azure_openai",
+        provider="openai",
         model="gpt-5-mini",
     )
 

@@ -40,7 +40,7 @@ This rare botanical event was documented by the Institute of Magical Botany and 
 
 async def test_claim_verifier_evaluate(messages) -> None:
     config = ClaimVerifierConfig(
-        provider="azure_openai",
+        provider="openai",
         claim_extraction_model="gpt-5-mini",
         verification_model="gpt-5-mini",
         verification_reasoning_effort="low",

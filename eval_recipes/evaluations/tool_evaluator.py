@@ -91,7 +91,7 @@ class ToolEvaluator:
 
         Args:
             input: InputToolEvaluator containing tools and conversation data to evaluate
-            provider: The AI provider to use ("openai" or "azure_openai")
+            provider: The AI provider to use ("openai" or "openai")
             model: The model to use for evaluation (default: "o3")
         """
         self.config = config or ToolEvaluationConfig()

@@ -38,7 +38,7 @@ This pattern is commonly used for adding logging, checking permissions, or measu
 async def test_user_preferences_evaluator(messages) -> None:
     """Test the UserPreferencesEvaluator."""
     config = BaseEvaluationConfig(
-        provider="azure_openai",
+        provider="openai",
         model="gpt-5",
     )
     evaluator = UserPreferencesEvaluator(config=config)

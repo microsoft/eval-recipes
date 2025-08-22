@@ -187,9 +187,9 @@ async def validate_single_file(
         if eval_name == "claim_verification":
             evaluation_configs[eval_name] = ClaimVerifierConfig(provider="openai", max_concurrency=10)
         elif eval_name == "tool_usage":
-            evaluation_configs[eval_name] = ToolEvaluationConfig(provider="azure_openai")
+            evaluation_configs[eval_name] = ToolEvaluationConfig(provider="openai")
         elif eval_name == "guidance":
-            evaluation_configs[eval_name] = GuidanceEvaluationConfig(provider="azure_openai")
+            evaluation_configs[eval_name] = GuidanceEvaluationConfig(provider="openai")
         else:  # preference_adherence and any others
             evaluation_configs[eval_name] = BaseEvaluationConfig(provider="openai")
 

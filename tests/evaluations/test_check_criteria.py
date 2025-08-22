@@ -32,7 +32,7 @@ hunters lost their way, and the bear—content and proud—returned to his den, 
 
 async def test_check_criteria_evaluator(messages) -> None:
     config = CheckCriteriaEvaluationConfig(
-        provider="azure_openai",
+        provider="openai",
         model="gpt-5-mini",
         criteria=[
             "The response contains no em dashes",

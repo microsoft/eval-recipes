@@ -99,7 +99,7 @@ async def test_evaluate_all() -> None:
     ]
 
     guidance_config = GuidanceEvaluationConfig(
-        provider="azure_openai",
+        provider="openai",
         model="gpt-5",
         capability_manifest="""Can: Search information, edit documents
 Cannot: Make purchases, access external systems""",
@@ -113,7 +113,7 @@ Cannot: Make purchases, access external systems""",
     )
 
     claim_verification_config = ClaimVerifierConfig(
-        provider="azure_openai",
+        provider="openai",
         claim_extraction_model="gpt-5",
         verification_model="gpt-5",
         verification_reasoning_effort="medium",
@@ -134,6 +134,7 @@ Cannot: Make purchases, access external systems""",
             "tool_usage": tool_usage_config,
             "claim_verification": claim_verification_config,
         },
+        max_concurrency=4,
     )
 
     for result in results:
@@ -180,5 +181,5 @@ async def test_custom_evaluator() -> None:
 
 
 if __name__ == "__main__":
-    # asyncio.run(test_evaluate_all())
+    asyncio.run(test_evaluate_all())
     asyncio.run(test_custom_evaluator())

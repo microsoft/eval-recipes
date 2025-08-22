@@ -73,7 +73,7 @@ def tools() -> list[ChatCompletionToolParam]:
 async def test_tool_evaluator_with_tool_call(messages_with_tool_call, tools) -> None:
     """Test the ToolEvaluator.evaluate() method with messages that include a tool call."""
     config = ToolEvaluationConfig(
-        provider="azure_openai",
+        provider="openai",
         model="gpt-5",
         tool_thresholds={
             "search_web": 50,
