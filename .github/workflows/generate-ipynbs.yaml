@@ -7,6 +7,7 @@ on:
   push:
     branches:
       - main
+      - DavidKoleczek/create-notebooks  # Temporary for testing
     paths:
       - 'demos/*.py'
 
