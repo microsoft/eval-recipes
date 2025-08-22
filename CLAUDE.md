@@ -82,3 +82,6 @@ Push for extreme simplicity in these areas:
   - Within an `except` clause, raise exceptions with `raise ... from err` or `raise ... from None` to distinguish them from errors in exception handling
 - Do not use relative imports.
 - Use dotenv to load environment variables for local development. Assume we have a `.env` file
+
+# Your workflow
+- After making changes, `make check` will be called. If there are any linter or type errors, fix them.

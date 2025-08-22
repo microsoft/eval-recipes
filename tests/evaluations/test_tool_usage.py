@@ -1,4 +1,4 @@
-# Copyright (c) Microsoft. All rights reserved
+# Copyright (c) Microsoft. All rights reserved.
 
 from openai.types.chat.chat_completion_tool_param import ChatCompletionToolParam
 from openai.types.responses import EasyInputMessageParam

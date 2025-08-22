@@ -1,4 +1,4 @@
-# Copyright (c) Microsoft. All rights reserved
+# Copyright (c) Microsoft. All rights reserved.
 
 from openai.types.responses import EasyInputMessageParam, ResponseInputTextParam
 import pytest

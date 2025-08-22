@@ -1,3 +1,5 @@
+# Copyright (c) Microsoft. All rights reserved.
+
 import marimo
 
 __generated_with = "0.14.17"
