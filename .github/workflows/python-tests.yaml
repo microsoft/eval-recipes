@@ -1,6 +1,6 @@
 # Copyright (c) Microsoft. All rights reserved
 
-name: Python Tests
+name: Python Integration Tests
 
 on:
   workflow_dispatch:

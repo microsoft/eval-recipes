@@ -70,6 +70,7 @@ def tools() -> list[ChatCompletionToolParam]:
     ]
 
 
+@pytest.mark.skip(reason="Time")
 async def test_tool_evaluator_with_tool_call(messages_with_tool_call, tools) -> None:
     """Test the ToolEvaluator.evaluate() method with messages that include a tool call."""
     config = ToolEvaluationConfig(

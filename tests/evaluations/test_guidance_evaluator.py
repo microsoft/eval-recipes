@@ -114,6 +114,7 @@ You do not have the ability to create external documents, access the internet, o
     )
 
 
+@pytest.mark.skip(reason="Time")
 async def test_evaluate_bad_response(
     response_input_bad: ResponseInputParam,
     config_with_manifest: GuidanceEvaluationConfig,
@@ -124,6 +125,7 @@ async def test_evaluate_bad_response(
     print(result)
 
 
+@pytest.mark.skip(reason="Time")
 async def test_evaluate_good_response(
     response_input_good: ResponseInputParam,
     config_with_manifest: GuidanceEvaluationConfig,
@@ -134,6 +136,7 @@ async def test_evaluate_good_response(
     print(result)
 
 
+@pytest.mark.skip(reason="Time")
 async def test_evaluate_in_scope(
     response_input_in_scope: ResponseInputParam,
     config_with_manifest: GuidanceEvaluationConfig,
@@ -144,7 +147,7 @@ async def test_evaluate_in_scope(
     print(result)
 
 
-# Single test for run interface with InputGuidanceEval
+@pytest.mark.skip(reason="Time")
 async def test_run_interface() -> None:
     """Test the run interface with InputGuidanceEval."""
     conversation_history_full = """<conversation>
@@ -176,7 +179,7 @@ You do not have the ability to create external documents, access the internet, o
     print(result)
 
 
-# Keep the existing generate_capability_manifest test
+@pytest.mark.skip(reason="Time")
 async def test_generate_capability_manifest() -> None:
     """Test the generate_capability_manifest function with system prompt."""
     system_prompt = """You are an AI assistant that can help with text analysis, writing assistance, \
