@@ -188,3 +188,8 @@ asyncio.run(main())
 
 [ROADMAP.md](./docs/ROADMAP.md)
 
+
+## Development
+
+[Generating Jupyter Notebooks](./docs/NOTEBOOKS.md)
+

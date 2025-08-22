@@ -10,7 +10,7 @@ from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from dotenv import load_dotenv
 from openai import AsyncAzureOpenAI, AsyncOpenAI, DefaultAioHttpClient
 
-load_dotenv(override=True)
+load_dotenv()
 
 
 @asynccontextmanager
