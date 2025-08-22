@@ -1,4 +1,4 @@
-# Copyright (c) Microsoft. All rights reserved
+# Copyright (c) Microsoft. All rights reserved.
 
 """Script to generate Jupyter notebooks from marimo notebooks."""
 

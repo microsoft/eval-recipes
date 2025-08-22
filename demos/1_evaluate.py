@@ -1,13 +1,4 @@
-# /// script
-# requires-python = ">=3.11"
-# dependencies = [
-#     "assistant-evaluations",
-#     "marimo",
-# ]
-#
-# [tool.uv.sources]
-# assistant-evaluations = { path = "../", editable = true }
-# ///
+# Copyright (c) Microsoft. All rights reserved.
 
 import marimo
 
