@@ -4,6 +4,9 @@ name: Generate Jupyter Notebooks
 
 on:
   workflow_dispatch:
+  pull_request:  # This will make it run on the PR
+    branches:
+      - main
   push:
     branches:
       - main
