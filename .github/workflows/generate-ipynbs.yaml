@@ -21,6 +21,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # For PRs, checkout the head branch so we can push back to it
+          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}
       
       - name: Install uv
         uses: astral-sh/setup-uv@v6
@@ -78,12 +81,6 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "Auto-generate Jupyter notebooks from marimo sources"
-            # Push to the correct branch
-            if [ "${{ github.event_name }}" = "pull_request" ]; then
-              # For PRs, push to the head branch
-              git push origin HEAD:refs/heads/${{ github.head_ref }}
-            else
-              # For pushes to main, push directly
-              git push origin HEAD:${{ github.ref }}
-            fi
+            # Simple push since we checked out the right branch
+            git push
           fi
