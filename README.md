@@ -8,9 +8,9 @@ Each evaluation will analyze an LLMs's responses against the inputs that generat
 
 ### 1. View notebooks directly on GitHub
 
-Located in [demos/](./demos)
+Located in [demos/](./demos). See option 2 below for an interactive experience.
 
-### 2. Run notebooks with marimo
+### 2. Run interactive notebooks with marimo
 
 Run demo notebooks (the `.py` files located at [demos/](./demos)) with [`marimo`](https://docs.marimo.io/getting_started/installation/).
 Follow the installation section below if you do not have `uv` installed or environment variables configured.
