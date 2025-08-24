@@ -8,8 +8,9 @@ To generate with specific quality:
     uv run manim scripts/create_animation.py EvalRecipesAnimation -qh  # high quality (1080p)
     uv run manim scripts/create_animation.py EvalRecipesAnimation -qk  # 4K quality
 
-To generate as GIF:
-    uv run manim scripts/create_animation.py EvalRecipesAnimation -qh --format=gif
+To generate as GIF (requires installing ffmpeg):
+    uv run manim scripts/create_animation.py EvalRecipesAnimation -qh
+    ffmpeg -i media/videos/create_animation/1080p60/EvalRecipesAnimation.mp4 -vf "fps=30,scale=1920:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" -loop 0 output.gif
 
 To save to a specific location:
     uv run manim scripts/create_animation.py EvalRecipesAnimation -o /path/to/output.mp4
