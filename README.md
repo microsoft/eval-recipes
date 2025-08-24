@@ -3,9 +3,7 @@
 A library for making it easy to evaluate AI chat assistants in an online, "recipe-like" way.
 Each evaluation will analyze an LLM's responses against the inputs that generated it (messages and tools) over some domain, such as if user preferences were adhered to.
 
-<video src="demos/data/EvalRecipesAnimation.mp4" width="100%" controls>
-  Your browser does not support the video tag.
-</video>
+![Eval Recipes Animation](demos/data/EvalRecipesAnimation.gif)
 
 
 ## Get Started Quick!
@@ -198,4 +196,4 @@ asyncio.run(main())
 - [Generating Jupyter Notebooks](./docs/NOTEBOOKS.md)
 - To re-create the [Manim](https://www.manim.community/) animation:
   - `make install-all` to install manim. See the docs if you have issues on a Linux-based system.
-  - `uv run manim scripts/create_animation.py EvalRecipesAnimation -qh && cp media/videos/create_animation/1080p60/EvalRecipesAnimation.mp4 demos/data/`
+  - `uv run manim scripts/create_animation.py EvalRecipesAnimation -qh --format=gif && cp media/videos/create_animation/1080p60/EvalRecipesAnimation*.gif demos/data/EvalRecipesAnimation.gif`
