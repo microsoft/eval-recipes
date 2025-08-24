@@ -170,7 +170,7 @@ class EvalRecipesAnimation(Scene):
         scorecard.scale(0.6)
         scorecard.shift(RIGHT * 5.7 + DOWN * 0.35)
 
-        title = Text("Turn Scorecard", font_size=24, color=WHITE)
+        title = Text("Step Scorecard", font_size=24, color=WHITE)
         title.next_to(scorecard, UP, buff=0.25)
 
         eval_code_right_edge = 2.6  # Move arrow start point left

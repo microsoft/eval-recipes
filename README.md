@@ -196,4 +196,4 @@ asyncio.run(main())
 - [Generating Jupyter Notebooks](./docs/NOTEBOOKS.md)
 - To re-create the [Manim](https://www.manim.community/) animation:
   - `make install-all` to install manim. See the docs if you have issues on a Linux-based system. Note this will also require `ffmpeg` to be installed.
-  - `uv run manim scripts/create_animation.py EvalRecipesAnimation -qh && ffmpeg -i media/videos/create_animation/1080p60/EvalRecipesAnimation.mp4 -vf "fps=30,scale=1920:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" -loop 0 demos/data/EvalRecipesAnimation.gif`
+  - `uv run manim scripts/create_animation.py EvalRecipesAnimation -qh && ffmpeg -y -i media/videos/create_animation/1080p60/EvalRecipesAnimation.mp4 -vf "fps=30,scale=1920:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" -loop 0 demos/data/EvalRecipesAnimation.gif`
