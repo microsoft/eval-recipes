@@ -1,6 +1,6 @@
 [project]
 name = "eval_recipes"
-version = "0.0.3"
+version = "0.0.4"
 description = "Eval Recipes"
 authors = [{ name = "Semantic Workbench Team" }]
 readme = "README.md"
@@ -27,6 +27,9 @@ dev = [
     "pyright>=1.1.401",
     "pytest",
     "pytest-asyncio",
+]
+animations = [
+    "manim>=0.19,<1.0",
 ]
 
 [build-system]

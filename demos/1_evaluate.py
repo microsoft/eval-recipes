@@ -500,7 +500,7 @@ def _(mo):
     async def evaluate(
         messages: ResponseInputParam,
         tools: list[ChatCompletionToolParam],
-        evaluations: list[str],
+        evaluations: list[str | type[EvaluatorProtocol]],
         evaluation_configs: dict[str, BaseEvaluationConfig] = {},
         max_concurrency: int = 1,
     ) -> list[EvaluationOutput]:

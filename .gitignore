@@ -1,5 +1,6 @@
 # Project specific
 __marimo__/
+media/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
