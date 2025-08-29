@@ -1,6 +1,6 @@
 # Copyright (c) Microsoft. All rights reserved.
 
-"""Claim Verification Prompts
+"""Claim Verification Evaluator Prompts
 
 The claim extraction prompts are originally from Claimify (https://arxiv.org/abs/2502.10855) and
 validation prompts borrow in part from VeriTrail (https://arxiv.org/abs/2505.21786).

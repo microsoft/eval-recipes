@@ -3,7 +3,10 @@
 from openai.types.responses import EasyInputMessageParam
 import pytest
 
-from eval_recipes.evaluations.check_criteria import CheckCriteriaEvaluationConfig, CheckCriteriaEvaluator
+from eval_recipes.evaluations.check_criteria.check_criteria_evaluator import (
+    CheckCriteriaEvaluator,
+    CheckCriteriaEvaluatorConfig,
+)
 
 
 @pytest.fixture
@@ -31,7 +34,7 @@ hunters lost their way, and the bear—content and proud—returned to his den, 
 
 
 async def test_check_criteria_evaluator(messages) -> None:
-    config = CheckCriteriaEvaluationConfig(
+    config = CheckCriteriaEvaluatorConfig(
         provider="openai",
         model="gpt-5-mini",
         criteria=[

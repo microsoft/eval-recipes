@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft. All rights reserved.
 
 import asyncio
+from typing import Literal
 
 from liquid import render
 from loguru import logger
@@ -16,7 +17,6 @@ from eval_recipes.evaluations.claim_verification.prompts import (
     SELECTION_SYSTEM_PROMPT,
     SELECTION_USER_PROMPT,
 )
-from eval_recipes.schemas import ClaimVerifierConfig
 from eval_recipes.utils.llm import create_client
 
 
@@ -72,10 +72,14 @@ class ClaimExtraction:
     def __init__(
         self,
         input_data: InputClaimExtraction,
-        config: ClaimVerifierConfig | None = None,
+        provider: Literal["openai", "azure_openai"] = "openai",
+        claim_extraction_model: Literal["gpt-5", "gpt-5-mini", "gpt-5-nano", "o3", "o4-mini"] = "gpt-5-mini",
     ) -> None:
         self.input_data = input_data
-        self.config = config or ClaimVerifierConfig()
+        self.provider: Literal["openai", "azure_openai"] = provider
+        self.claim_extraction_model: Literal["gpt-5", "gpt-5-mini", "gpt-5-nano", "o3", "o4-mini"] = (
+            claim_extraction_model
+        )
 
     async def run(self) -> list[str]:
         # Process the sentence (assuming it's already been split by caller)
@@ -121,9 +125,9 @@ class ClaimExtraction:
             EasyInputMessageParam(role="system", content=SELECTION_SYSTEM_PROMPT),
             EasyInputMessageParam(role="user", content=user_prompt),
         ]
-        async with create_client(provider=self.config.provider) as client:
+        async with create_client(provider=self.provider) as client:
             response = await client.responses.parse(
-                model=self.config.claim_extraction_model,
+                model=self.claim_extraction_model,
                 input=messages,
                 text_format=SelectionResult,
                 store=False,
@@ -164,9 +168,9 @@ class ClaimExtraction:
             EasyInputMessageParam(role="system", content=DISAMBIGUATION_SYSTEM_PROMPT),
             EasyInputMessageParam(role="user", content=user_prompt),
         ]
-        async with create_client(provider=self.config.provider) as client:
+        async with create_client(provider=self.provider) as client:
             response = await client.responses.parse(
-                model=self.config.claim_extraction_model,
+                model=self.claim_extraction_model,
                 input=messages,
                 text_format=DisambiguationResult,
                 store=False,
@@ -190,9 +194,9 @@ class ClaimExtraction:
                 EasyInputMessageParam(role="system", content=DECOMPOSITION_SYSTEM_PROMPT),
                 EasyInputMessageParam(role="user", content=user_prompt),
             ]
-            async with create_client(provider=self.config.provider) as client:
+            async with create_client(provider=self.provider) as client:
                 response = await client.responses.parse(
-                    model=self.config.claim_extraction_model,
+                    model=self.claim_extraction_model,
                     input=messages,
                     text_format=DecompositionResult,
                     store=False,

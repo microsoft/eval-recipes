@@ -3,8 +3,8 @@
 from openai.types.responses import EasyInputMessageParam
 import pytest
 
-from eval_recipes.evaluations.user_preferences import UserPreferencesEvaluator
-from eval_recipes.schemas import BaseEvaluationConfig
+from eval_recipes.evaluations.preference_adherence.preference_adherence_evaluator import PreferenceAdherenceEvaluator
+from eval_recipes.schemas import BaseEvaluatorConfig
 
 
 @pytest.fixture
@@ -37,11 +37,11 @@ This pattern is commonly used for adding logging, checking permissions, or measu
 
 @pytest.mark.skip(reason="Time")
 async def test_user_preferences_evaluator(messages) -> None:
-    """Test the UserPreferencesEvaluator."""
-    config = BaseEvaluationConfig(
+    """Test the PreferenceAdherenceEvaluator."""
+    config = BaseEvaluatorConfig(
         provider="openai",
         model="gpt-5",
     )
-    evaluator = UserPreferencesEvaluator(config=config)
+    evaluator = PreferenceAdherenceEvaluator(config=config)
     result = await evaluator.evaluate(messages=messages, tools=[])
     print(result)

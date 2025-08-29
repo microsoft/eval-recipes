@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncGenerator
+from typing import Literal
 
 from liquid import render
 from loguru import logger
@@ -16,141 +17,34 @@ from eval_recipes.evaluations.claim_verification.prompts import (
     VERDICT_GENERATION_SYSTEM_PROMPT,
     VERDICT_GENERATION_USER_PROMPT,
 )
-from eval_recipes.schemas import ClaimVerifierConfig, EvaluationOutput
+from eval_recipes.evaluations.claim_verification.schemas import (
+    InputClaimVerificationEvaluator,
+    InputContext,
+    OutputCitation,
+    OutputClaimVerificationEvaluator,
+    OutputClaimVerificationEvaluatorMetrics,
+    OutputClaimVerificationStep,
+    OutputSentenceSplittingStep,
+)
+from eval_recipes.evaluations.claim_verification.utils import FormattedContext
+from eval_recipes.schemas import BaseEvaluatorConfig, EvaluationOutput
 from eval_recipes.utils.llm import create_client
 from eval_recipes.utils.responses_conversion import extract_last_msg, format_messages_as_context
 
 
-class FormattedSource:
-    """Handles line processing and formatting for a single source document."""
-
-    def __init__(self, source_id: str, title: str, content: str, max_line_length: int) -> None:
-        self.source_id = source_id
-        self.title = title
-        self.original_content = content
-        self.lines = content.splitlines() if content else []
-
-    def get_formatted_lines_with_numbers(self) -> str:
-        """Return lines with line number prefixes, starting from 0, joined with newlines."""
-        if not self.lines:
-            return "The content is empty"
-
-        # Calculate width for consistent formatting
-        total_lines = len(self.lines)
-        width = len(str(total_lines - 1)) if total_lines > 0 else 1
-
-        formatted_lines = []
-        for i, line in enumerate(self.lines):
-            formatted_lines.append(f"{i:>{width}}→{line}")
-
-        return "\n".join(formatted_lines)
-
-    def get_text_by_range(self, start_range: int, end_range: int) -> str:
-        """Extract original text from lines start_range (inclusive) to end_range (exclusive)."""
-        if start_range >= end_range or start_range < 0 or start_range >= len(self.lines):
-            return ""
-
-        # Clamp end_range to valid range
-        end_range = min(end_range, len(self.lines))
-
-        # Return the selected lines joined with newlines to preserve original formatting
-        selected_lines = self.lines[start_range:end_range]
-        return "\n".join(selected_lines)
+class ClaimVerificationEvaluatorConfig(BaseEvaluatorConfig):
+    claim_extraction_model: Literal["gpt-5", "gpt-5-mini", "gpt-5-nano", "o3", "o4-mini"] = Field(default="gpt-5-mini")
+    verification_model: Literal["gpt-5", "gpt-5-mini", "gpt-5-nano", "o3", "o4-mini"] = Field(default="gpt-5")
+    verification_reasoning_effort: Literal["minimal", "low", "medium", "high"] = Field(default="high")
+    max_line_length: int = Field(default=200)
+    max_concurrency: int = Field(default=1)
+    ignore_tool_names: list[str] = Field(
+        default=[],
+        description="A list of tool names to ignore as source context.",
+    )
 
 
-class FormattedContext:
-    def __init__(self, input_data: "InputClaimVerifier", max_line_length: int) -> None:
-        self.sources: list[FormattedSource] = []
-        for ctx in input_data.source_context:
-            formatted_source = FormattedSource(ctx.source_id, ctx.title, ctx.content, max_line_length)
-            self.sources.append(formatted_source)
-
-    def format_as_xml(self) -> str:
-        """
-        Generate XML representation with line numbers for all sources.
-
-        Example output:
-        <source id='1'>
-        <title>User Message 0</title>
-        <content>
-        0→What is the capital of France?
-        1→I need to know for my homework.
-        </content>
-        </source>
-        """
-        context_xml = ""
-        for source in self.sources:
-            context_xml += f"<source id='{source.source_id}'>\n"
-            context_xml += f"<title>{source.title}</title>\n"
-            context_xml += "<content>\n"
-            context_xml += source.get_formatted_lines_with_numbers() + "\n"
-            context_xml += "</content>\n"
-            context_xml += "</source>\n\n"
-
-        return context_xml.strip()
-
-    def get_cited_text(self, source_id: str, start_range: int, end_range: int) -> str:
-        """Extract cited text for the given source and line range."""
-        for source in self.sources:
-            if source.source_id == source_id:
-                return source.get_text_by_range(start_range, end_range)
-        return ""
-
-
-class InputContext(BaseModel):
-    source_id: str
-    title: str
-    content: str
-
-
-class InputClaimVerifier(BaseModel):
-    text: str  # The full text to analyze and split into sentences
-    user_question: str  # The user question to provide context for the extraction
-    source_context: list[InputContext]
-
-
-class OutputCitation(BaseModel):
-    source_id: str
-    cited_text: str
-
-
-class OutputSentenceSplittingStep(BaseModel):
-    sentence: str
-    start_index: int
-    end_index: int
-    preceding_sentences: list[str]
-    following_sentences: list[str]
-    sentence_with_surrounding_context: str  # The sentence with surrounding context
-
-
-class OutputClaimVerificationStep(BaseModel):
-    proof: str
-    citations: list[OutputCitation]
-    open_domain_justification: str = ""
-    is_open_domain: bool = False
-
-
-class OutputClaimVerifier(BaseModel):
-    sentence: str
-    start_index: int  # Refers to the start index of the original sentence in the text
-    end_index: int  # Refers to the end index of the original sentence in the text
-    claim: str
-    proof: str = ""  # The justification for the citations
-    citations: list[OutputCitation] = []  # No citations indicates the claim is not supported
-    open_domain_justification: str = ""  # Justification if an unverified claim is considered open-domain
-    is_open_domain: bool = False  # Decision if the claim is open-domain or not
-
-
-class OutputClaimVerifierMetrics(BaseModel):
-    total_claims: int
-    closed_domain_supported: float  # Percentage of claims that are supported, of the ones that are closed-domain (assumes supported are closed-domain)
-    ignore_metric_recommended: bool  # Indicates if the metric has a high chance to being irrelevant to the input
-    number_supported_claims: int  # Number of claims that are supported by citations
-    number_open_domain_claims: int  # Number of claims that are considered open-domain (and not supported)
-    number_not_supported_claims: int  # Number of claims that are not supported by citations and not open-domain
-
-
-# This class for Structured Outputs only.
+# This class is for Structured Outputs only.
 class Citations(BaseModel):
     source_id: str = Field(description="The ID of the source context that supports the claim.")
     start_range: int = Field(description="The starting line number of the content that supports the claim (inclusive)")
@@ -159,7 +53,7 @@ class Citations(BaseModel):
     )
 
 
-# This class for Structured Outputs only.
+# This class is for Structured Outputs only.
 class ClaimVerificationResult(BaseModel):
     proof: str = Field(
         description="Your justification for why the claim is grounded in the source, with the content from start_range to end_range as proof."
@@ -171,12 +65,12 @@ class ClaimVerificationResult(BaseModel):
     is_open_domain: bool = Field(description="true if the claim is open-domain, false otherwise")
 
 
-class ClaimVerifier:
-    def __init__(self, config: ClaimVerifierConfig | None = None) -> None:
+class ClaimVerificationEvaluator:
+    def __init__(self, config: ClaimVerificationEvaluatorConfig | None = None) -> None:
         """
         Verifies claims by extracting them from text and checking them against source context.
         """
-        self.config = config or ClaimVerifierConfig()
+        self.config = config or ClaimVerificationEvaluatorConfig()
 
         # Initialize NLTK for sentence splitting
         try:
@@ -197,7 +91,7 @@ class ClaimVerifier:
             InputContext(source_id=ctx["source_id"], title=ctx["title"], content=ctx["content"])
             for ctx in context_dicts
         ]
-        input_data = InputClaimVerifier(
+        input_data = InputClaimVerificationEvaluator(
             text=last_assistant_msg,
             user_question=last_user_msg,
             source_context=source_context,
@@ -209,14 +103,14 @@ class ClaimVerifier:
             results.append(result)
 
         # The last result should be the metrics
-        if results and isinstance(results[-1], OutputClaimVerifierMetrics):
+        if results and isinstance(results[-1], OutputClaimVerificationEvaluatorMetrics):
             metrics = results[-1]
             claims = results[:-1]  # All results except the last one are claims
             return EvaluationOutput(
                 eval_name="claim_verification",
                 applicable=not metrics.ignore_metric_recommended,
                 score=metrics.closed_domain_supported,
-                feedback=self._feedback([x for x in results if isinstance(x, OutputClaimVerifier)]),
+                feedback=self._feedback([x for x in results if isinstance(x, OutputClaimVerificationEvaluator)]),
                 metadata={
                     "total_claims": metrics.total_claims,
                     "number_supported_claims": metrics.number_supported_claims,
@@ -235,13 +129,13 @@ class ClaimVerifier:
         )
 
     async def run(
-        self, input: InputClaimVerifier
-    ) -> AsyncGenerator[OutputClaimVerifier | OutputClaimVerifierMetrics, None]:
+        self, input: InputClaimVerificationEvaluator
+    ) -> AsyncGenerator[OutputClaimVerificationEvaluator | OutputClaimVerificationEvaluatorMetrics, None]:
         """
         Runs claim verification on the input text.
 
         Yields:
-        OutputClaimVerifier: Individual claim verification results containing:
+        OutputClaimVerificationEvaluator: Individual claim verification results containing:
             - sentence: Original sentence containing the claim
             - start_index: Start position of the sentence in the original text
             - end_index: End position of the sentence in the original text
@@ -252,7 +146,7 @@ class ClaimVerifier:
                 - cited_text: Text from the source that supports the claim
             - is_open_domain: Whether claim was determined to be open-domain
 
-        OutputClaimVerifierMetrics: Final metrics object (yielded last) containing:
+        OutputClaimVerificationEvaluatorMetrics: Final metrics object (yielded last) containing:
             - total_claims: Total number of claims processed
             - closed_domain_supported: Percentage of closed-domain claims supported
             - ignore_metric_recommended: Whether closed_domain_supported is recommended to be ignored due to high likelihood of an answer that does not need verification. Heuristically determined.
@@ -271,7 +165,7 @@ class ClaimVerifier:
         logger.info(f"Split text into {len(sentences)} sentences")
 
         # Accumulate results for final metrics calculation
-        accumulated_results: list[OutputClaimVerifier] = []
+        accumulated_results: list[OutputClaimVerificationEvaluator] = []
 
         semaphore = asyncio.Semaphore(self.config.max_concurrency)
         tasks = [self._process_sentence_with_semaphore(semaphore, i, sentence) for i, sentence in enumerate(sentences)]
@@ -294,14 +188,14 @@ class ClaimVerifier:
         semaphore: asyncio.Semaphore,
         sentence_index: int,
         sentence: OutputSentenceSplittingStep,
-    ) -> list[OutputClaimVerifier]:
+    ) -> list[OutputClaimVerificationEvaluator]:
         """Process a single sentence with semaphore control for concurrency limiting."""
         async with semaphore:
             return await self._process_sentence(sentence_index, sentence)
 
     async def _process_sentence(
         self, sentence_index: int, sentence: OutputSentenceSplittingStep
-    ) -> list[OutputClaimVerifier]:
+    ) -> list[OutputClaimVerificationEvaluator]:
         """
         Extracts all claims from the sentence.
         Then verifies the claim using the claim_verifier model with parallel processing.
@@ -314,7 +208,11 @@ class ClaimVerifier:
             excerpt=sentence.sentence_with_surrounding_context,
             user_question=self.input.user_question,
         )
-        claim_extractor = ClaimExtraction(input_data=sentence_input, config=self.config)
+        claim_extractor = ClaimExtraction(
+            input_data=sentence_input,
+            provider=self.config.provider,
+            claim_extraction_model=self.config.claim_extraction_model,
+        )
         claims: list[str] = await claim_extractor.run()
 
         claim_semaphore = asyncio.Semaphore(self.config.max_concurrency)
@@ -333,10 +231,10 @@ class ClaimVerifier:
         semaphore: asyncio.Semaphore,
         sentence: OutputSentenceSplittingStep,
         claim_output: str,
-    ) -> OutputClaimVerifier:
+    ) -> OutputClaimVerificationEvaluator:
         async with semaphore:
             claim_verification_result = await self._claim_verifier(claim=claim_output)
-            combined_result = OutputClaimVerifier(
+            combined_result = OutputClaimVerificationEvaluator(
                 sentence=sentence.sentence,
                 start_index=sentence.start_index,
                 end_index=sentence.end_index,
@@ -445,7 +343,9 @@ class ClaimVerifier:
             is_open_domain=result.is_open_domain,
         )
 
-    def _compute_metrics(self, results: list[OutputClaimVerifier]) -> OutputClaimVerifierMetrics:
+    def _compute_metrics(
+        self, results: list[OutputClaimVerificationEvaluator]
+    ) -> OutputClaimVerificationEvaluatorMetrics:
         """Compute metrics from the verification results."""
         total_claims = len(results)
 
@@ -474,7 +374,7 @@ class ClaimVerifier:
             number_open_domain_claims > len(closed_domain_claims) and closed_domain_supported < 15.0
         )
 
-        return OutputClaimVerifierMetrics(
+        return OutputClaimVerificationEvaluatorMetrics(
             total_claims=total_claims,
             closed_domain_supported=closed_domain_supported,
             number_supported_claims=number_supported_claims,
@@ -483,7 +383,7 @@ class ClaimVerifier:
             ignore_metric_recommended=ignore_metric_recommended,
         )
 
-    def _feedback(self, results: list[OutputClaimVerifier]) -> str | None:
+    def _feedback(self, results: list[OutputClaimVerificationEvaluator]) -> str | None:
         """For each claim that was not verified (no citations) and not open domain,
         Create a string:
 

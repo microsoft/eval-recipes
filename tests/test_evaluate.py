@@ -7,13 +7,10 @@ from openai.types.responses import EasyInputMessageParam, ResponseFunctionToolCa
 from openai.types.responses.response_input_param import FunctionCallOutput
 
 from eval_recipes.evaluate import evaluate
-from eval_recipes.schemas import (
-    BaseEvaluationConfig,
-    ClaimVerifierConfig,
-    EvaluationOutput,
-    GuidanceEvaluationConfig,
-    ToolEvaluationConfig,
-)
+from eval_recipes.evaluations.claim_verification.claim_verification_evaluator import ClaimVerificationEvaluatorConfig
+from eval_recipes.evaluations.guidance.guidance_evaluator import GuidanceEvaluatorConfig
+from eval_recipes.evaluations.tool_usage.tool_usage_evaluator import ToolUsageEvaluatorConfig
+from eval_recipes.schemas import BaseEvaluatorConfig, EvaluationOutput
 
 
 async def test_evaluate_all() -> None:
@@ -98,26 +95,27 @@ async def test_evaluate_all() -> None:
         ),
     ]
 
-    guidance_config = GuidanceEvaluationConfig(
+    guidance_config = GuidanceEvaluatorConfig(
         provider="openai",
         model="gpt-5",
         capability_manifest="""Can: Search information, edit documents
 Cannot: Make purchases, access external systems""",
     )
 
-    tool_usage_config = ToolEvaluationConfig(
+    tool_usage_config = ToolUsageEvaluatorConfig(
         tool_thresholds={
             "search": 85,
             "edit_file": 70,
         }
     )
 
-    claim_verification_config = ClaimVerifierConfig(
+    claim_verification_config = ClaimVerificationEvaluatorConfig(
         provider="openai",
         claim_extraction_model="gpt-5",
         verification_model="gpt-5",
         verification_reasoning_effort="medium",
         ignore_tool_names=["edit_file"],
+        max_concurrency=5,
     )
 
     results = await evaluate(
@@ -148,8 +146,8 @@ Cannot: Make purchases, access external systems""",
 
 async def test_custom_evaluator() -> None:
     class WordCountEvaluator:
-        def __init__(self, config: BaseEvaluationConfig | None = None) -> None:
-            self.config = config or BaseEvaluationConfig()
+        def __init__(self, config: BaseEvaluatorConfig | None = None) -> None:
+            self.config = config or BaseEvaluatorConfig()
 
         async def evaluate(
             self, messages: ResponseInputParam, tools: list[ChatCompletionToolParam]
@@ -173,7 +171,7 @@ async def test_custom_evaluator() -> None:
             WordCountEvaluator,
         ],
         evaluation_configs={
-            "WordCountEvaluator": BaseEvaluationConfig(model="gpt-5-mini"),
+            "WordCountEvaluator": BaseEvaluatorConfig(model="gpt-5-mini"),
         },
     )
 

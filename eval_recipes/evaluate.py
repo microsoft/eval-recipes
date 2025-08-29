@@ -5,26 +5,25 @@ import asyncio
 from openai.types.chat.chat_completion_tool_param import ChatCompletionToolParam
 from openai.types.responses import ResponseInputParam
 
-from eval_recipes.evaluations.check_criteria import CheckCriteriaEvaluationConfig, CheckCriteriaEvaluator
-from eval_recipes.evaluations.claim_verification.claim_verifier import ClaimVerifier
-from eval_recipes.evaluations.guidance_evaluator import GuidanceEvaluator
-from eval_recipes.evaluations.tool_evaluator import ToolEvaluator
-from eval_recipes.evaluations.user_preferences import UserPreferencesEvaluator
-from eval_recipes.schemas import (
-    BaseEvaluationConfig,
-    ClaimVerifierConfig,
-    EvaluationOutput,
-    EvaluatorProtocol,
-    GuidanceEvaluationConfig,
-    ToolEvaluationConfig,
+from eval_recipes.evaluations.check_criteria.check_criteria_evaluator import (
+    CheckCriteriaEvaluator,
+    CheckCriteriaEvaluatorConfig,
 )
+from eval_recipes.evaluations.claim_verification.claim_verification_evaluator import (
+    ClaimVerificationEvaluator,
+    ClaimVerificationEvaluatorConfig,
+)
+from eval_recipes.evaluations.guidance.guidance_evaluator import GuidanceEvaluator, GuidanceEvaluatorConfig
+from eval_recipes.evaluations.preference_adherence.preference_adherence_evaluator import PreferenceAdherenceEvaluator
+from eval_recipes.evaluations.tool_usage.tool_usage_evaluator import ToolUsageEvaluator, ToolUsageEvaluatorConfig
+from eval_recipes.schemas import BaseEvaluatorConfig, EvaluationOutput, EvaluatorProtocol
 
 
 async def evaluate(
     messages: ResponseInputParam,
     tools: list[ChatCompletionToolParam],
     evaluations: list[str | type[EvaluatorProtocol]],
-    evaluation_configs: dict[str, BaseEvaluationConfig] | None = None,
+    evaluation_configs: dict[str, BaseEvaluatorConfig] | None = None,
     max_concurrency: int = 1,
 ) -> list[EvaluationOutput]:
     """
@@ -48,12 +47,12 @@ async def evaluate(
     if evaluation_configs is None:
         evaluation_configs = {}
 
-    evaluator_map: dict[str, tuple[type, type[BaseEvaluationConfig]]] = {
-        "guidance": (GuidanceEvaluator, GuidanceEvaluationConfig),
-        "preference_adherence": (UserPreferencesEvaluator, BaseEvaluationConfig),
-        "tool_usage": (ToolEvaluator, ToolEvaluationConfig),
-        "claim_verification": (ClaimVerifier, ClaimVerifierConfig),
-        "check_criteria": (CheckCriteriaEvaluator, CheckCriteriaEvaluationConfig),
+    evaluator_map: dict[str, tuple[type, type[BaseEvaluatorConfig]]] = {
+        "guidance": (GuidanceEvaluator, GuidanceEvaluatorConfig),
+        "preference_adherence": (PreferenceAdherenceEvaluator, BaseEvaluatorConfig),
+        "tool_usage": (ToolUsageEvaluator, ToolUsageEvaluatorConfig),
+        "claim_verification": (ClaimVerificationEvaluator, ClaimVerificationEvaluatorConfig),
+        "check_criteria": (CheckCriteriaEvaluator, CheckCriteriaEvaluatorConfig),
     }
 
     semaphore = asyncio.Semaphore(max_concurrency)
@@ -61,7 +60,6 @@ async def evaluate(
     async def run_evaluation(
         eval_item: str | type[EvaluatorProtocol],
     ) -> EvaluationOutput | None:
-        """Run a single evaluation with semaphore-controlled concurrency."""
         async with semaphore:
             # Handle string evaluation names (built-in evaluators)
             if isinstance(eval_item, str):
@@ -79,7 +77,6 @@ async def evaluate(
                 # Get config using the class name
                 class_name = eval_item.__name__
                 config = evaluation_configs.get(class_name)
-                # Instantiate the custom evaluator
                 evaluator = eval_item(config=config)
 
             return await evaluator.evaluate(messages, tools)

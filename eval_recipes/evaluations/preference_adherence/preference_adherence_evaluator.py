@@ -1,12 +1,12 @@
 # Copyright (c) Microsoft. All rights reserved.
 
 """
-User Preferences Evaluator
+Preference Adherence Evaluator
 
 Measure the number of user preferences that are effectively incorporated into the assistant's actions and responses.
 
 First extracts user preferences from the conversation history (including system message)
-Then checks each of the preferences against the assistant's responses to determine if they were followed.
+Then checks each of the preferences against the assistant's responses to determine what degree they were adhered to.
 """
 
 from typing import Literal
@@ -16,12 +16,15 @@ from openai.types.chat.chat_completion_tool_param import ChatCompletionToolParam
 from openai.types.responses import ResponseInputParam
 from pydantic import BaseModel, Field
 
-from eval_recipes.schemas import BaseEvaluationConfig, EvaluationOutput
+from eval_recipes.evaluations.preference_adherence.prompts import (
+    EXTRACTION_SYSTEM_PROMPT,
+    EXTRACTION_USER_PROMPT,
+    SCORING_SYSTEM_PROMPT,
+    SCORING_USER_PROMPT,
+)
+from eval_recipes.schemas import BaseEvaluatorConfig, EvaluationOutput
 from eval_recipes.utils.llm import create_client
 from eval_recipes.utils.responses_conversion import format_full_history
-
-SCORE_MIN = 0
-SCORE_MAX = 100
 
 
 class InputUserPreferences(BaseModel):
@@ -50,104 +53,25 @@ class AdherenceToPreferences(BaseModel):
         description="Your reasoning for whether the assistant adhered to the preference, including reasoning if the preference is relevant to what the user currently wanted."
     )
     adherence_probability: float = Field(
-        description=f"The likelihood that the assistant adhered to the user preference, if applicable, between {SCORE_MIN} and {SCORE_MAX}, inclusive."
+        description="The likelihood that the assistant adhered to the user preference, if applicable, between 0 and 100, inclusive."
     )
     determination: Literal["adhered", "did_not_adhere", "not_applicable"] = Field(
         description="Whether the assistant adhered to the user preference."
     )
 
 
-class OutputUserPreferencesEvaluator(BaseModel):
+class OutputPreferenceAdherenceEvaluator(BaseModel):
     extracted_user_preferences: ExtractedUserPreferences
     adherence_to_preferences: list[AdherenceToPreferences]
     score: float
 
 
-EXTRACTION_SYSTEM_PROMPT = """You are tasked with extracting a user's **high-level** preferences from a provided conversation.
-
-Focus on extracting preferences about HOW the user wants things done, not WHAT they want done. Look for:
-- Communication style preferences (e.g., "no emojis", "concise responses", "detailed explanations", "paragraph form")
-- Format preferences (e.g., "bullet points", "numbered lists", "tables")
-- Source preferences (e.g., "cite sources", "use official sources", "include links")
-- Tone preferences (e.g., "professional", "casual", "technical")
-- Comparison preferences (e.g., "I prefer X over Y")
-- General behavioral preferences (e.g., "always explain your reasoning", "be direct")
-
-DO NOT extract:
-- Specific tasks or questions (e.g., "explain Python decorators")
-- Previous one-time requests (e.g., "for this document, use..." that is from old messages).
-- Content requests (e.g., "tell me about X")
-
-You will be provided the entire conversation history, including the system message.
-The system message may contain both instructions for the assistant AND user preferences/memories.
-Extract ONLY the user preferences and memories, not general assistant instructions.
-
-Extract preferences from:
-1. System message sections labeled as "user preferences", "user memories", or similar
-2. User messages where they state preferences about how they want things done (high-level preferences or things that should be remembered for future interactions)
-3. Do NOT extract anything from assistant responses or tool calls, they are only provided for your context.
-
-Each preference should be atomic and individually checkable. \
-If a single line contains multiple preferences (e.g., "I prefer concise responses and no emojis"), \
-break them into separate preference entries, each with the same line numbers. \
-Record the exact line numbers where each preference appears."""
-
-EXTRACTION_USER_PROMPT = """<conversation>
-{{conversation_history_beginning_turn}}
-</conversation>"""
-
-SCORING_SYSTEM_PROMPT = """You are an evaluator tasked with determining whether an assistant adhered to a user's preference.
-
-## Evaluation Process:
-1. First, understand the preference being evaluated
-2. Examine the assistant's last response to see if it follows this preference
-3. Provide clear reasoning explaining your determination
-4. Assign an appropriate score and then label as "adhered", "did_not_adhere", "not_applicable"
-
-## How to Make Determinations:
-
-**"adhered"** - The assistant clearly followed the preference
-- The response demonstrates compliance with the stated preference
-- Give high scores (80-100) for clear adherence
-- Example: User prefers "no emojis" → Assistant response contains no emojis
-
-**"did_not_adhere"** - The assistant violated the preference
-- The response directly contradicts the stated preference
-- Give low scores (0-20) for clear violations
-- Example: User prefers "concise responses" → Assistant gives unnecessarily verbose response
-
-**"not_applicable"** - The preference doesn't apply to this specific response
-- The context or task makes the preference irrelevant
-- The score will be ignored in this case, so you can assign a 0.
-- Example: User prefers "cite sources" → Assistant is doing a creative writing task
-
-## What to Include in Your Reasoning:
-- Specific examples from the assistant's response that support your determination
-- Why the preference is or isn't applicable to the current context
-- How well the assistant balanced the preference with the user's immediate needs
-- Any nuances (e.g., if the assistant partially adhered or had good reason to deviate)
-
-## Important Notes:
-- Focus evaluation on the **last** assistant response only
-- Consider the full conversation context to understand what the user is asking for
-- A preference can be "not_applicable" if the current task makes following it inappropriate
-- Be fair: sometimes not following a preference is the right choice for the user's immediate need"""
-
-SCORING_USER_PROMPT = """<conversation>
-{{conversation_history_full}}
-</conversation>
-
-<preference>
-{{preference}}
-</preference>"""
-
-
-class UserPreferencesEvaluator:
+class PreferenceAdherenceEvaluator:
     def __init__(
         self,
-        config: BaseEvaluationConfig | None = None,
+        config: BaseEvaluatorConfig | None = None,
     ) -> None:
-        self.config = config or BaseEvaluationConfig()
+        self.config = config or BaseEvaluatorConfig()
 
     async def evaluate(self, messages: ResponseInputParam, tools: list[ChatCompletionToolParam]) -> EvaluationOutput:
         input_data = InputUserPreferences(
@@ -169,7 +93,7 @@ class UserPreferencesEvaluator:
         )
         return output
 
-    async def run(self, input: InputUserPreferences) -> OutputUserPreferencesEvaluator:
+    async def run(self, input: InputUserPreferences) -> OutputPreferenceAdherenceEvaluator:
         preferences = await self._extract_preferences(input)
         result = await self._score_preferences(preferences, input)
         return result
@@ -204,7 +128,7 @@ class UserPreferencesEvaluator:
 
     async def _score_preferences(
         self, preferences: ExtractedUserPreferences, input: InputUserPreferences
-    ) -> OutputUserPreferencesEvaluator:
+    ) -> OutputPreferenceAdherenceEvaluator:
         """
         For each preference, check if the assistant adhered to it.
         The final score should be the average adherence probability across all preferences.
@@ -255,13 +179,13 @@ class UserPreferencesEvaluator:
             # Set score to 0 but keep the evaluation as applicable
             score = 0
 
-        return OutputUserPreferencesEvaluator(
+        return OutputPreferenceAdherenceEvaluator(
             extracted_user_preferences=preferences,
             adherence_to_preferences=preference_adherences,
             score=score,
         )
 
-    def _feedback(self, results: OutputUserPreferencesEvaluator) -> str | None:
+    def _feedback(self, results: OutputPreferenceAdherenceEvaluator) -> str | None:
         """If there were preferences, for each preference where the determination was "did not adhere",
         provide feedback like:
         <preference>I prefer concise responses.</preference>

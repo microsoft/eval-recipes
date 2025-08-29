@@ -3,8 +3,10 @@
 from openai.types.responses import EasyInputMessageParam, ResponseInputTextParam
 import pytest
 
-from eval_recipes.evaluations.claim_verification.claim_verifier import ClaimVerifier
-from eval_recipes.schemas import ClaimVerifierConfig
+from eval_recipes.evaluations.claim_verification.claim_verification_evaluator import (
+    ClaimVerificationEvaluator,
+    ClaimVerificationEvaluatorConfig,
+)
 
 
 @pytest.fixture
@@ -40,14 +42,14 @@ This rare botanical event was documented by the Institute of Magical Botany and 
 
 @pytest.mark.skip(reason="Time")
 async def test_claim_verifier_evaluate(messages) -> None:
-    config = ClaimVerifierConfig(
+    config = ClaimVerificationEvaluatorConfig(
         provider="openai",
         claim_extraction_model="gpt-5-mini",
         verification_model="gpt-5-mini",
         verification_reasoning_effort="low",
         max_concurrency=2,
     )
-    claim_verifier = ClaimVerifier(config=config)
+    claim_verifier = ClaimVerificationEvaluator(config=config)
     result = await claim_verifier.evaluate(messages=messages, tools=[])
 
     print(f"Evaluation result: {result}")

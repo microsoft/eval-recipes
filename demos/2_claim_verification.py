@@ -2,7 +2,7 @@
 
 import marimo
 
-__generated_with = "0.15.0"
+__generated_with = "0.15.2"
 app = marimo.App(width="medium")
 
 
@@ -20,24 +20,30 @@ def _():
     from openai.types.responses.function_tool_param import FunctionToolParam
     from openai.types.responses.response_input_param import FunctionCallOutput
 
-    from eval_recipes.evaluations.claim_verification.claim_verifier import (
-        ClaimVerifier,
-        InputClaimVerifier,
-        InputContext,
-        OutputClaimVerifier,
+    from eval_recipes.evaluations.claim_verification.claim_verification_evaluator import (
+        ClaimVerificationEvaluator,
+        ClaimVerificationEvaluatorConfig,
     )
-    from eval_recipes.schemas import ClaimVerifierConfig
+    from eval_recipes.evaluations.claim_verification.schemas import (
+        InputClaimVerificationEvaluator,
+        InputContext,
+        OutputCitation,
+        OutputClaimVerificationEvaluator,
+        OutputClaimVerificationEvaluatorMetrics,
+        OutputClaimVerificationStep,
+        OutputSentenceSplittingStep,
+    )
     from eval_recipes.utils.llm import create_client
     return (
         ChatCompletionToolParam,
-        ClaimVerifier,
-        ClaimVerifierConfig,
+        ClaimVerificationEvaluator,
+        ClaimVerificationEvaluatorConfig,
         EasyInputMessageParam,
         FunctionCallOutput,
         FunctionToolParam,
-        InputClaimVerifier,
+        InputClaimVerificationEvaluator,
         InputContext,
-        OutputClaimVerifier,
+        OutputClaimVerificationEvaluator,
         Path,
         ResponseFunctionToolCallParam,
         create_client,
@@ -72,7 +78,7 @@ def _(mo):
     except NameError:
         # Fallback for Jupyter notebooks - use path relative to current directory
         image_path = "data/claim diagram.png"
-    
+
     mo.image(image_path)
     return
 
@@ -518,7 +524,7 @@ def _(
     FUNCTION_CALL_OUTPUT_2,
     FUNCTION_CALL_OUTPUT_3,
     FUNCTION_CALL_OUTPUT_4,
-    InputClaimVerifier,
+    InputClaimVerificationEvaluator,
     InputContext,
     USER_MESSAGE_1,
     USER_MESSAGE_2,
@@ -551,7 +557,7 @@ def _(
 
     text_to_be_verified = json.loads(FUNCTION_CALL_5["arguments"])["content"]
 
-    input_claim_verifier = InputClaimVerifier(
+    input_claim_verifier = InputClaimVerificationEvaluator(
         text=text_to_be_verified,
         user_question=USER_MESSAGE_2,
         source_context=source_context,
@@ -717,15 +723,15 @@ def _(mo):
 
 @app.cell(hide_code=True)
 async def _(
-    ClaimVerifier,
-    ClaimVerifierConfig,
+    ClaimVerificationEvaluator,
+    ClaimVerificationEvaluatorConfig,
     claim_extraction_model,
     input_claim_verifier,
     mo,
     verification_model,
     verification_reasoning_effort,
 ):
-    config = ClaimVerifierConfig(
+    config = ClaimVerificationEvaluatorConfig(
         claim_extraction_model=claim_extraction_model.value,
         provider="openai",
         verification_model=verification_model.value,
@@ -733,7 +739,7 @@ async def _(
         max_concurrency=10,
     )
 
-    verifier = ClaimVerifier(config=config)
+    verifier = ClaimVerificationEvaluator(config=config)
 
     # Use the common function to process events
     results, metrics, final_markdown = await process_verification_events(verifier, input_claim_verifier, "", mo)
@@ -786,7 +792,7 @@ def _(
     FUNCTION_CALL_OUTPUT_2,
     FUNCTION_CALL_OUTPUT_3,
     FUNCTION_CALL_OUTPUT_4,
-    OutputClaimVerifier,
+    OutputClaimVerificationEvaluator,
     SYSTEM_PROMPT,
     USER_MESSAGE_1,
     json,
@@ -795,7 +801,7 @@ def _(
     verifier,
 ):
     # Use the results to rewrite the response
-    feedback = verifier._feedback([x for x in results if isinstance(x, OutputClaimVerifier)])
+    feedback = verifier._feedback([x for x in results if isinstance(x, OutputClaimVerificationEvaluator)])
 
     REWRITE_SYSTEM_PROMPT = """You are a fact checker who is rewriting a response using feedback on if the original content was grounded in the source context or not.
     Based on the feedback, you must either rewrite the sentence/response so that it is grounded factually and accurately in the provided context. If it is not possible to rewrite the sentence, you must remove that part from the response.
@@ -974,20 +980,20 @@ def _(mo):
 
 @app.cell
 async def _(
-    ClaimVerifier,
-    InputClaimVerifier,
+    ClaimVerificationEvaluator,
+    InputClaimVerificationEvaluator,
     USER_MESSAGE_2,
     config,
     mo,
     new_response,
     source_context,
 ):
-    input_claim_verifier_rewrite = InputClaimVerifier(
+    input_claim_verifier_rewrite = InputClaimVerificationEvaluator(
         text=new_response,
         user_question=USER_MESSAGE_2,
         source_context=source_context,
     )
-    verifier_rewrite = ClaimVerifier(config=config)
+    verifier_rewrite = ClaimVerificationEvaluator(config=config)
 
     rewrite_verification_results, rewrite_metrics, rewrite_final_markdown = await process_verification_events(
         verifier_rewrite, input_claim_verifier_rewrite, "Rewritten", mo
