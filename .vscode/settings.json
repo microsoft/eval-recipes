@@ -1,5 +1,4 @@
 {
-  "python.analysis.typeCheckingMode": "standard",
   "[python]": {
     "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {

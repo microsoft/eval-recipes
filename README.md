@@ -29,28 +29,7 @@ uv pip install "git+https://github.com/microsoft/eval-recipes"
 ```
 
 > [!WARNING]
-> This library is very early and everything is subject to change. Consider pinning the dependency to a commit with the command like: `uv pip install "git+https://github.com/microsoft/eval-recipes@v0.0.3"`
-
-
-## Installation
-### Prerequisites
-- make
-  - For Windows, you can download it using [UniGetUI](https://github.com/marticliment/UnigetUI) and use [ezwinports make](https://github.com/microsoft/winget-pkgs/tree/master/manifests/e/ezwinports/make)
-- [uv](https://docs.astral.sh/uv/getting-started/installation/)
-
-### Install Dependencies & Configure Environment
-
-```bash
-make install
-cp .env.sample .env
-# Configure API keys in .env
-# Make sure the venv gets activated
-. .venv/bin/activate # Linux example
-```
-
-This library requires either OpenAI or Azure OpenAI to be configured. You must set the correct environment variables in the `.env` file.
-
-Check [utils.py `create_client`](./eval_recipes/utils/llm.py) to troubleshoot any configuration issues.
+> This library is very early and everything is subject to change. Consider pinning the dependency to a commit with the command like: `uv pip install "git+https://github.com/microsoft/eval-recipes@v0.0.5"`
 
 
 ## High Level API
@@ -73,13 +52,11 @@ Each evaluation can be additionally configured, such as selecting the LLM used. 
 
 ```python
 import asyncio
-from eval_recipes.evaluate import evaluate
-from eval_recipes.schemas import BaseEvaluationConfig
 from openai.types.chat.chat_completion_tool_param import ChatCompletionToolParam
-from openai.types.responses import (
-    EasyInputMessageParam,
-    ResponseInputParam,
-)
+from openai.types.responses import EasyInputMessageParam, ResponseInputParam
+from eval_recipes.evaluate import evaluate
+from eval_recipes.evaluations.check_criteria.check_criteria_evaluator import CheckCriteriaEvaluatorConfig
+from eval_recipes.schemas import BaseEvaluatorConfig
 
 async def main() -> None:
     messages: ResponseInputParam = [
@@ -106,12 +83,13 @@ async def main() -> None:
             },
         ),
     ]
-    config_preference_adherence = BaseEvaluationConfig(model="gpt-5-mini")  # Sample config
+    config_preference_adherence = BaseEvaluatorConfig(model="gpt-5-mini")  # Sample config
+    check_criteria = CheckCriteriaEvaluatorConfig(criteria=["Your response should be at least one paragraph long."])
     result = await evaluate(
         messages=messages,
         tools=tools,
-        evaluations=["preference_adherence", "claim_verification", "tool_usage", "guidance"],
-        evaluation_configs={"preference_adherence": config_preference_adherence},
+        evaluations=["check_criteria", "claim_verification", "guidance", "preference_adherence", "tool_usage"],
+        evaluation_configs={"preference_adherence": config_preference_adherence, "check_criteria": check_criteria},
         max_concurrency=1,
     )
     print(result)
@@ -126,35 +104,31 @@ You can create custom evaluators by implementing a class that follows the [`Eval
 This allows you to extend the evaluation framework with domain-specific metrics tailored to your needs.
 
 Custom evaluators must implement:
-1. An `__init__` method that accepts an optional `BaseEvaluationConfig` parameter. If a config is not not provided, you must initialize a default.
+1. An `__init__` method that accepts an optional `BaseEvaluatorConfig` parameter. If a config is not not provided, you must initialize a default.
 2. An async `evaluate` method that takes messages and tools as input and returns an `EvaluationOutput`
 
 Here is an example of a custom evaluator that scores based on the length of the assistant's response being used in conjunction with the `preference_adherence` evaluator:
 
 ```python
 import asyncio
-from eval_recipes.evaluate import evaluate
-from eval_recipes.schemas import BaseEvaluationConfig, EvaluationOutput
 from openai.types.chat.chat_completion_tool_param import ChatCompletionToolParam
-from openai.types.responses import (
-    EasyInputMessageParam,
-    ResponseInputParam,
-)
+from openai.types.responses import EasyInputMessageParam, ResponseInputParam
+from eval_recipes.evaluate import evaluate
+from eval_recipes.schemas import BaseEvaluatorConfig, EvaluationOutput
 
 class ResponseLengthEvaluator:
     """Custom evaluator that scores based on response brevity."""
-    def __init__(self, config: BaseEvaluationConfig | None = None) -> None:
-        self.config = config or BaseEvaluationConfig()
+    def __init__(self, config: BaseEvaluatorConfig | None = None) -> None:
+        self.config = config or BaseEvaluatorConfig()
 
     async def evaluate(self, messages: ResponseInputParam, tools: list[ChatCompletionToolParam]) -> EvaluationOutput:
         total_length = 0
         for message in reversed(messages):  # Only look at the last assistant message
-            if "role" in message and message["role"] == "assistant":
-                if "content" in message and message["content"]:
-                    total_length += len(str(message["content"]))
-                    break
+            if ("role" in message and message["role"] == "assistant") and message.get("content"):
+                total_length += len(str(message["content"]))
+                break
 
-        score = max(0, 100 - int(total_length // 25)) # Decrease score as length increases
+        score = max(0, 100 - int(total_length // 25))  # Decrease score as length increases
         return EvaluationOutput(eval_name="response_length", applicable=True, score=score, metadata={})
 
 async def main() -> None:
@@ -172,13 +146,43 @@ async def main() -> None:
         messages=messages,
         tools=[],
         evaluations=[ResponseLengthEvaluator, "preference_adherence"],
-        evaluation_configs={"ResponseLengthEvaluator": BaseEvaluationConfig(model="gpt-5-mini")},
+        evaluation_configs={"ResponseLengthEvaluator": BaseEvaluatorConfig(model="gpt-5-mini")},
         max_concurrency=1,
     )
     print(result)
 
 asyncio.run(main())
 ```
+
+
+## Development Installation
+### Prerequisites
+- make
+  - For Windows, you can download it using [UniGetUI](https://github.com/marticliment/UnigetUI) and use [ezwinports make](https://github.com/microsoft/winget-pkgs/tree/master/manifests/e/ezwinports/make)
+- [uv](https://docs.astral.sh/uv/getting-started/installation/)
+
+### Install Dependencies & Configure Environment
+
+```bash
+make install
+cp .env.sample .env
+# Configure API keys in .env
+# Make sure the venv gets activated
+. .venv/bin/activate # Linux example
+```
+
+This library requires either OpenAI or Azure OpenAI to be configured. You must set the correct environment variables in the `.env` file.
+
+Check [utils.py `create_client`](./eval_recipes/utils/llm.py) to troubleshoot any configuration issues.
+
+### Other
+
+- [Generating Jupyter Notebooks](./docs/NOTEBOOKS.md)
+- To re-create the [Manim](https://www.manim.community/) animation:
+  - `make install-all` to install manim. See the docs if you have issues on a Linux-based system. Note this will also require `ffmpeg` to be installed.
+  - `uv run manim scripts/create_animation.py EvalRecipesAnimation -qh && ffmpeg -y -i media/videos/create_animation/1080p60/EvalRecipesAnimation.mp4 -vf "fps=30,scale=1920:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" -loop 0 demos/data/EvalRecipesAnimation.gif`
+- [Validating Evaluations](./tests/validate_evaluations.py):
+  - This script will run evaluations against a small "goldset" (see [data/goldset](data/goldset/)) where we have inputs to evaluate with labels of what the scores should be (defined in [data/goldset/labels.yaml](data/goldset/labels.yaml)).
 
 
 ## Low Level API
@@ -191,9 +195,6 @@ asyncio.run(main())
 [ROADMAP.md](./docs/ROADMAP.md)
 
 
-## Development
+## Attributions
 
-- [Generating Jupyter Notebooks](./docs/NOTEBOOKS.md)
-- To re-create the [Manim](https://www.manim.community/) animation:
-  - `make install-all` to install manim. See the docs if you have issues on a Linux-based system. Note this will also require `ffmpeg` to be installed.
-  - `uv run manim scripts/create_animation.py EvalRecipesAnimation -qh && ffmpeg -y -i media/videos/create_animation/1080p60/EvalRecipesAnimation.mp4 -vf "fps=30,scale=1920:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" -loop 0 demos/data/EvalRecipesAnimation.gif`
+The built-in `claim_verification` evaluation was originally based on these two papers: [Claimify](https://arxiv.org/abs/2502.10855) and [VeriTrail](https://arxiv.org/abs/2505.21786). This is not an official implementation of either and please cite the original papers if you use this evaluation in your work.

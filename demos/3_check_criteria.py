@@ -2,7 +2,7 @@
 
 import marimo
 
-__generated_with = "0.14.17"
+__generated_with = "0.15.2"
 app = marimo.App(width="medium")
 
 
@@ -15,13 +15,12 @@ def _():
     from openai.types.responses import ResponseInputParam
 
     from eval_recipes.evaluate import evaluate
-    from eval_recipes.evaluations.check_criteria import CheckCriteriaEvaluationConfig
-    from eval_recipes.schemas import BaseEvaluationConfig, EvaluationOutput
-
+    from eval_recipes.evaluations.check_criteria.check_criteria_evaluator import CheckCriteriaEvaluatorConfig
+    from eval_recipes.schemas import BaseEvaluatorConfig, EvaluationOutput
     return (
-        BaseEvaluationConfig,
+        BaseEvaluatorConfig,
         ChatCompletionToolParam,
-        CheckCriteriaEvaluationConfig,
+        CheckCriteriaEvaluatorConfig,
         EvaluationOutput,
         ResponseInputParam,
         evaluate,
@@ -111,7 +110,7 @@ def _(mo):
 
 @app.cell
 def _(
-    BaseEvaluationConfig,
+    BaseEvaluatorConfig,
     ChatCompletionToolParam,
     EvaluationOutput,
     ResponseInputParam,
@@ -120,12 +119,10 @@ def _(
     class SyntaxEvaluator:
         """Custom evaluator that checks for undesirable syntax patterns."""
 
-        def __init__(self, config: BaseEvaluationConfig | None = None) -> None:
-            self.config = config or BaseEvaluationConfig()
+        def __init__(self, config: BaseEvaluatorConfig | None = None) -> None:
+            self.config = config or BaseEvaluatorConfig()
 
-        async def evaluate(
-            self, messages: ResponseInputParam, tools: list[ChatCompletionToolParam]
-        ) -> EvaluationOutput:
+        async def evaluate(self, messages: ResponseInputParam, tools: list[ChatCompletionToolParam]) -> EvaluationOutput:
             # Extract the last assistant message
             assistant_message = ""
             for message in reversed(messages):
@@ -142,13 +139,9 @@ def _(
 
             # Check for headings greater than level 3 (####, #####, etc)
             excessive_heading_pattern = r"^#{4,}\s"
-            excessive_headings = re.findall(
-                excessive_heading_pattern, assistant_message, re.MULTILINE
-            )
+            excessive_headings = re.findall(excessive_heading_pattern, assistant_message, re.MULTILINE)
             if excessive_headings:
-                issues.append(
-                    f"Found {len(excessive_headings)} heading(s) with level > 4"
-                )
+                issues.append(f"Found {len(excessive_headings)} heading(s) with level > 4")
 
             # If any issues are found, score is 0
             feedback = None
@@ -168,7 +161,6 @@ def _(
                     "issues": issues,
                 },
             )
-
     return (SyntaxEvaluator,)
 
 
@@ -180,12 +172,12 @@ def _(mo):
 
 @app.cell
 async def _(
-    CheckCriteriaEvaluationConfig,
+    CheckCriteriaEvaluatorConfig,
     SyntaxEvaluator,
     evaluate,
     messages: "ResponseInputParam",
 ):
-    criteria_config = CheckCriteriaEvaluationConfig(
+    criteria_config = CheckCriteriaEvaluatorConfig(
         provider="openai",
         model="gpt-5-mini",
         criteria=[
@@ -341,9 +333,7 @@ def _(mo, result):
             results_md += "**Status:** Not Applicable\n\n"
 
         if eval_output.feedback:
-            results_md += (
-                f"**Feedback:**\n```plaintext\n{eval_output.feedback}\n```\n\n"
-            )
+            results_md += f"**Feedback:**\n```plaintext\n{eval_output.feedback}\n```\n\n"
 
         if eval_output.eval_name == "check_criteria":
             results_md += "**Individual Criteria Results (from metadata):**\n\n"
@@ -357,11 +347,6 @@ def _(mo, result):
 
         results_md += "\n---\n\n"
     mo.md(results_md)
-    return
-
-
-@app.cell
-def _():
     return
 
 

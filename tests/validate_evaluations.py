@@ -21,12 +21,10 @@ from rich.table import Table
 import yaml
 
 from eval_recipes.evaluate import evaluate
-from eval_recipes.schemas import (
-    BaseEvaluationConfig,
-    ClaimVerifierConfig,
-    GuidanceEvaluationConfig,
-    ToolEvaluationConfig,
-)
+from eval_recipes.evaluations.claim_verification.claim_verification_evaluator import ClaimVerificationEvaluatorConfig
+from eval_recipes.evaluations.guidance.guidance_evaluator import GuidanceEvaluatorConfig
+from eval_recipes.evaluations.tool_usage.tool_usage_evaluator import ToolUsageEvaluatorConfig
+from eval_recipes.schemas import BaseEvaluatorConfig
 
 console = Console()
 
@@ -185,13 +183,13 @@ async def validate_single_file(
     evaluation_configs = {}
     for eval_name in evaluation_names:
         if eval_name == "claim_verification":
-            evaluation_configs[eval_name] = ClaimVerifierConfig(provider="openai", max_concurrency=10)
+            evaluation_configs[eval_name] = ClaimVerificationEvaluatorConfig(provider="openai", max_concurrency=10)
         elif eval_name == "tool_usage":
-            evaluation_configs[eval_name] = ToolEvaluationConfig(provider="openai")
+            evaluation_configs[eval_name] = ToolUsageEvaluatorConfig(provider="openai")
         elif eval_name == "guidance":
-            evaluation_configs[eval_name] = GuidanceEvaluationConfig(provider="openai")
+            evaluation_configs[eval_name] = GuidanceEvaluatorConfig(provider="openai")
         else:  # preference_adherence and any others
-            evaluation_configs[eval_name] = BaseEvaluationConfig(provider="openai")
+            evaluation_configs[eval_name] = BaseEvaluatorConfig(provider="openai")
 
     messages, tools = load_test_data(file_path)
     results = await evaluate(

@@ -2,7 +2,7 @@
 
 import marimo
 
-__generated_with = "0.15.0"
+__generated_with = "0.15.2"
 app = marimo.App(width="medium")
 
 
@@ -45,7 +45,7 @@ def _(mo):
     return
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _():
     from pathlib import Path
 
@@ -58,22 +58,20 @@ def _():
     from openai.types.responses.response_input_param import FunctionCallOutput
 
     from eval_recipes.evaluate import evaluate
-    from eval_recipes.schemas import (
-        BaseEvaluationConfig,
-        ClaimVerifierConfig,
-        GuidanceEvaluationConfig,
-        ToolEvaluationConfig,
-    )
+    from eval_recipes.schemas import BaseEvaluatorConfig
+    from eval_recipes.evaluations.claim_verification.claim_verification_evaluator import ClaimVerificationEvaluatorConfig
+    from eval_recipes.evaluations.tool_usage.tool_usage_evaluator import ToolUsageEvaluatorConfig
+    from eval_recipes.evaluations.guidance.guidance_evaluator import GuidanceEvaluatorConfig
     return (
-        BaseEvaluationConfig,
+        BaseEvaluatorConfig,
         ChatCompletionToolParam,
-        ClaimVerifierConfig,
+        ClaimVerificationEvaluatorConfig,
         EasyInputMessageParam,
         FunctionCallOutput,
-        GuidanceEvaluationConfig,
+        GuidanceEvaluatorConfig,
         Path,
         ResponseFunctionToolCallParam,
-        ToolEvaluationConfig,
+        ToolUsageEvaluatorConfig,
         evaluate,
         mo,
     )
@@ -81,10 +79,13 @@ def _():
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""# High Level API
+    mo.md(
+        r"""
+    # High Level API
 
     Assistant evaluations exposes one high level function, `evaluate`, which expects the inputs you are already likely using in your assistant: chat messages and tool definitions. Specifically, we use the same parameters as the [OpenAI Responses API](https://platform.openai.com/docs/api-reference/responses/create#responses_create-input). We chose this because it is likely what you are already using and it is a common standard even for other LLM providers to support. It is also straighforward to write your own conversion from any other message and tool types.
-    """)
+    """
+    )
     return
 
 
@@ -98,7 +99,7 @@ def _(mo):
     except NameError:
         # Fallback for Jupyter notebooks - use path relative to current directory
         image_path = "data/Evaluate API Diagram.png"
-    
+
     mo.image(image_path)
     return
 
@@ -451,15 +452,15 @@ def _(mo):
 
 @app.cell
 def _(
-    BaseEvaluationConfig,
+    BaseEvaluatorConfig,
     CAPABILITY_MANIFEST,
-    ClaimVerifierConfig,
-    GuidanceEvaluationConfig,
-    ToolEvaluationConfig,
+    ClaimVerificationEvaluatorConfig,
+    GuidanceEvaluatorConfig,
+    ToolUsageEvaluatorConfig,
 ):
-    preference_adherence_config = BaseEvaluationConfig(model="gpt-5")
+    preference_adherence_config = BaseEvaluatorConfig(model="gpt-5")
 
-    claim_verification_config = ClaimVerifierConfig(
+    claim_verification_config = ClaimVerificationEvaluatorConfig(
         claim_extraction_model="gpt-5",
         provider="openai",
         verification_model="gpt-5",
@@ -468,13 +469,13 @@ def _(
         max_concurrency=10,
     )
 
-    guidance_config = GuidanceEvaluationConfig(
+    guidance_config = GuidanceEvaluatorConfig(
         provider="openai",
         model="gpt-5",
         capability_manifest=CAPABILITY_MANIFEST,
     )
 
-    tool_usage_config = ToolEvaluationConfig(
+    tool_usage_config = ToolUsageEvaluatorConfig(
         tool_thresholds={
             "search": 55,
             "edit_file": 60,

@@ -152,10 +152,10 @@ class EvalRecipesAnimation(Scene):
         """Show evaluation results scorecard."""
         table_data = [
             ["Evaluation", "Applicable", "Score"],
-            ["User Prefs", "Yes", "55%"],
             ["Claim Verification", "Yes", "89%"],
-            ["Tool Usage", "Yes", "100%"],
             ["Guidance", "No", "N/A"],
+            ["Pref Adherence", "Yes", "55%"],
+            ["Tool Usage", "Yes", "100%"],
             ["Average", "-", "81%"],
         ]
         scorecard = Table(

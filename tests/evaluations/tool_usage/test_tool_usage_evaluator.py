@@ -4,8 +4,7 @@ from openai.types.chat.chat_completion_tool_param import ChatCompletionToolParam
 from openai.types.responses import EasyInputMessageParam
 import pytest
 
-from eval_recipes.evaluations.tool_evaluator import ToolEvaluator
-from eval_recipes.schemas import ToolEvaluationConfig
+from eval_recipes.evaluations.tool_usage.tool_usage_evaluator import ToolUsageEvaluator, ToolUsageEvaluatorConfig
 
 
 @pytest.fixture
@@ -72,8 +71,8 @@ def tools() -> list[ChatCompletionToolParam]:
 
 @pytest.mark.skip(reason="Time")
 async def test_tool_evaluator_with_tool_call(messages_with_tool_call, tools) -> None:
-    """Test the ToolEvaluator.evaluate() method with messages that include a tool call."""
-    config = ToolEvaluationConfig(
+    """Test the ToolUsageEvaluator.evaluate() method with messages that include a tool call."""
+    config = ToolUsageEvaluatorConfig(
         provider="openai",
         model="gpt-5",
         tool_thresholds={
@@ -81,7 +80,7 @@ async def test_tool_evaluator_with_tool_call(messages_with_tool_call, tools) -> 
             "calculate": 50,
         },
     )
-    evaluator = ToolEvaluator(config=config)
+    evaluator = ToolUsageEvaluator(config=config)
     result = await evaluator.evaluate(messages=messages_with_tool_call, tools=tools)
 
     print(f"Evaluation result with tool call: {result}")

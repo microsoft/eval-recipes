@@ -11,9 +11,9 @@ from openai.types.responses import (
 from openai.types.responses.response_input_param import FunctionCallOutput, Message
 import pytest
 
-from eval_recipes.evaluations.guidance_evaluator import (
-    GuidanceEvaluationConfig,
+from eval_recipes.evaluations.guidance.guidance_evaluator import (
     GuidanceEvaluator,
+    GuidanceEvaluatorConfig,
     InputGuidanceEval,
     generate_capability_manifest,
 )
@@ -103,9 +103,9 @@ Ccould you tell me a bit more about what kind of story you have in mind?
 
 
 @pytest.fixture
-def config_with_manifest() -> GuidanceEvaluationConfig:
+def config_with_manifest() -> GuidanceEvaluatorConfig:
     """Config with pre-computed capability manifest."""
-    return GuidanceEvaluationConfig(
+    return GuidanceEvaluatorConfig(
         provider="openai",
         model="gpt-5",
         capability_manifest="""You can help with text analysis, writing assistance, answering questions, and general conversation. \
@@ -117,7 +117,7 @@ You do not have the ability to create external documents, access the internet, o
 @pytest.mark.skip(reason="Time")
 async def test_evaluate_bad_response(
     response_input_bad: ResponseInputParam,
-    config_with_manifest: GuidanceEvaluationConfig,
+    config_with_manifest: GuidanceEvaluatorConfig,
 ) -> None:
     """Test evaluate function with bad response (hallucination)."""
     evaluator = GuidanceEvaluator(config=config_with_manifest)
@@ -128,7 +128,7 @@ async def test_evaluate_bad_response(
 @pytest.mark.skip(reason="Time")
 async def test_evaluate_good_response(
     response_input_good: ResponseInputParam,
-    config_with_manifest: GuidanceEvaluationConfig,
+    config_with_manifest: GuidanceEvaluatorConfig,
 ) -> None:
     """Test evaluate function with good response (graceful failure)."""
     evaluator = GuidanceEvaluator(config=config_with_manifest)
@@ -139,7 +139,7 @@ async def test_evaluate_good_response(
 @pytest.mark.skip(reason="Time")
 async def test_evaluate_in_scope(
     response_input_in_scope: ResponseInputParam,
-    config_with_manifest: GuidanceEvaluationConfig,
+    config_with_manifest: GuidanceEvaluatorConfig,
 ) -> None:
     """Test evaluate function with in-scope request."""
     evaluator = GuidanceEvaluator(config=config_with_manifest)
@@ -167,7 +167,7 @@ that you could then copy into Google Slides yourself. Would that be helpful?</me
         conversation_history_beginning_turn=conversation_history_beginning,
     )
 
-    config = GuidanceEvaluationConfig(
+    config = GuidanceEvaluatorConfig(
         provider="openai",
         model="gpt-5",
         capability_manifest="""You can help with text analysis, writing assistance, answering questions, and general conversation. \

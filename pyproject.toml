@@ -1,6 +1,6 @@
 [project]
 name = "eval_recipes"
-version = "0.0.4"
+version = "0.0.5"
 description = "Eval Recipes"
 authors = [{ name = "Semantic Workbench Team" }]
 readme = "README.md"
@@ -102,3 +102,4 @@ on_cell_change="lazy"
 
 [tool.pyright]
 ignore = ["demos"]
+typeCheckingMode = "standard"
