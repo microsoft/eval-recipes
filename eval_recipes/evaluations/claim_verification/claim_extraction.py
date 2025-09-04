@@ -1,5 +1,10 @@
 # Copyright (c) Microsoft. All rights reserved.
 
+"""
+This module implements the claim extraction methodology from the Claimify paper (https://arxiv.org/abs/2502.10855).
+This is not the official implementation of the methodology. Please cite the original paper if you use this in your work.
+"""
+
 import asyncio
 from typing import Literal
 
