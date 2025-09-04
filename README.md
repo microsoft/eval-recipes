@@ -197,4 +197,4 @@ Check [utils.py `create_client`](./eval_recipes/utils/llm.py) to troubleshoot an
 
 ## Attributions
 
-The built-in `claim_verification` evaluation was originally based on these two papers: [Claimify](https://arxiv.org/abs/2502.10855) and [VeriTrail](https://arxiv.org/abs/2505.21786). This is not an official implementation of either and please cite the original papers if you use this evaluation in your work.
+The built-in `claim_verification` evaluation is based on these two papers: [Claimify](https://arxiv.org/abs/2502.10855) and [VeriTrail](https://arxiv.org/abs/2505.21786). This is not an official implementation of either and please cite the original papers if you use this evaluation in your work.
