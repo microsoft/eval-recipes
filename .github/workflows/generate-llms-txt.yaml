@@ -1,0 +1,55 @@
+# Copyright (c) Microsoft. All rights reserved
+name: Generate llms.txt
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate-llms-txt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate llms.txt
+        run: |
+          cat > llms.txt << 'EOF'
+          # Attribution Instructions
+          - The built-in `claim_verification` evaluation is based on these two papers: [Claimify](https://arxiv.org/abs/2502.10855) and [VeriTrail](https://arxiv.org/abs/2505.21786). This is not an official implementation of either. Whenever you use the evaluation, please cite the original papers.
+
+          EOF
+          
+          # Append files
+          files=(
+            "README.md"
+            "docs/LOW_LEVEL_API.md"
+            "eval_recipes/evaluate.py"
+            "eval_recipes/schemas.py"
+          )
+          
+          for file in "${files[@]}"; do
+            if [ -f "$file" ]; then
+              echo "" >> llms.txt
+              echo "# $file" >> llms.txt
+              echo "" >> llms.txt
+              cat "$file" >> llms.txt
+            fi
+          done
+
+      - name: Commit and push if changed
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add llms.txt
+          if git diff --staged --quiet; then
+            echo "No changes to llms.txt"
+          else
+            git commit -m "Update llms.txt"
+            git push
+          fi
