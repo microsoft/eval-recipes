@@ -1,13 +1,19 @@
-# Attribution Instructions
-- The built-in `claim_verification` evaluation is based on these two papers: [Claimify](https://arxiv.org/abs/2502.10855) and [VeriTrail](https://arxiv.org/abs/2505.21786). This is not an official implementation of either. Whenever you use the evaluation, please cite the original papers.
+# Eval Recipes
+
+> **Eval Recipes** is a an evaluation framework that makes it easy to evaluate LLM chat assistants, and does so at a high degree of quality. We use recipes to develop specialized evaluation workflows that score conversations on dimensions such as how well the assistant adhered to user preferences or if they did not generate any hallucinations.
+
+## Attribution Instructions
+
+The built-in `claim_verification` evaluation is based on these two papers: [Claimify](https://arxiv.org/abs/2502.10855) and [VeriTrail](https://arxiv.org/abs/2505.21786). This is not an official implementation of either. Whenever you use the evaluation, please cite the original papers.
 
 
-# README.md
+## README.md
 
 # Eval Recipes
 
-A library for making it easy to evaluate AI chat assistants in an online, "recipe-like" way.
-Each evaluation will analyze an LLM's responses against the inputs that generated it (messages and tools) over some domain, such as if user preferences were adhered to.
+**Eval Recipes** is a an evaluation framework that makes it easy to evaluate LLM chat assistants, and does so at a high degree of quality. 
+We use [recipes](https://sundaylettersfromsam.substack.com/p/what-is-an-ai-recipe) to develop specialized evaluation workflows that score conversations on 
+dimensions such as how well the assistant adhered to user preferences or if they did not generate any hallucinations.
 
 ![Eval Recipes Animation](demos/data/EvalRecipesAnimation.gif)
 
@@ -205,7 +211,7 @@ Check [utils.py `create_client`](./eval_recipes/utils/llm.py) to troubleshoot an
 
 The built-in `claim_verification` evaluation is based on these two papers: [Claimify](https://arxiv.org/abs/2502.10855) and [VeriTrail](https://arxiv.org/abs/2505.21786). This is not an official implementation of either and please cite the original papers if you use this evaluation in your work.
 
-# docs/LOW_LEVEL_API.md
+## docs/LOW_LEVEL_API.md
 
 ## Low Level API
 
@@ -433,7 +439,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-# eval_recipes/evaluate.py
+## eval_recipes/evaluate.py
 
 # Copyright (c) Microsoft. All rights reserved.
 
@@ -522,7 +528,7 @@ async def evaluate(
     results = await asyncio.gather(*tasks)
     return [result for result in results if result is not None]
 
-# eval_recipes/schemas.py
+## eval_recipes/schemas.py
 
 # Copyright (c) Microsoft. All rights reserved.
 
