@@ -1,7 +1,8 @@
 # Eval Recipes
 
-A library for making it easy to evaluate AI chat assistants in an online, "recipe-like" way.
-Each evaluation will analyze an LLM's responses against the inputs that generated it (messages and tools) over some domain, such as if user preferences were adhered to.
+**Eval Recipes** is a an evaluation framework that makes it easy to evaluate LLM chat assistants, and does so at a high degree of quality. 
+We use [recipes](https://sundaylettersfromsam.substack.com/p/what-is-an-ai-recipe) to develop specialized evaluation workflows that score conversations on 
+dimensions such as how well the assistant adhered to user preferences or if they did not generate any hallucinations.
 
 ![Eval Recipes Animation](demos/data/EvalRecipesAnimation.gif)
 

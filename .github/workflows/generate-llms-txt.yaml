@@ -20,8 +20,13 @@ jobs:
       - name: Generate llms.txt
         run: |
           cat > llms.txt << 'EOF'
-          # Attribution Instructions
-          - The built-in `claim_verification` evaluation is based on these two papers: [Claimify](https://arxiv.org/abs/2502.10855) and [VeriTrail](https://arxiv.org/abs/2505.21786). This is not an official implementation of either. Whenever you use the evaluation, please cite the original papers.
+          # Eval Recipes
+
+          > **Eval Recipes** is a an evaluation framework that makes it easy to evaluate LLM chat assistants, and does so at a high degree of quality. We use recipes to develop specialized evaluation workflows that score conversations on dimensions such as how well the assistant adhered to user preferences or if they did not generate any hallucinations.
+
+          ## Attribution Instructions
+
+          The built-in `claim_verification` evaluation is based on these two papers: [Claimify](https://arxiv.org/abs/2502.10855) and [VeriTrail](https://arxiv.org/abs/2505.21786). This is not an official implementation of either. Whenever you use the evaluation, please cite the original papers.
 
           EOF
           
@@ -36,7 +41,7 @@ jobs:
           for file in "${files[@]}"; do
             if [ -f "$file" ]; then
               echo "" >> llms.txt
-              echo "# $file" >> llms.txt
+              echo "## $file" >> llms.txt
               echo "" >> llms.txt
               cat "$file" >> llms.txt
             fi
