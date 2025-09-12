@@ -48,7 +48,7 @@ class OutputClaimVerificationEvaluator(BaseModel):
 class OutputClaimVerificationEvaluatorMetrics(BaseModel):
     total_claims: int
     closed_domain_supported: float  # Percentage of claims that are supported, of the ones that are closed-domain (assumes supported are closed-domain)
-    ignore_metric_recommended: bool  # Indicates if the metric has a high chance to being irrelevant to the input
+    ignore_metric_recommended: bool  # Indicates if the metric has a high chance of being irrelevant to the input
     number_supported_claims: int  # Number of claims that are supported by citations
     number_open_domain_claims: int  # Number of claims that are considered open-domain (and not supported)
     number_not_supported_claims: int  # Number of claims that are not supported by citations and not open-domain

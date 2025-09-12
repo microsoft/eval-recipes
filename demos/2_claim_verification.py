@@ -499,7 +499,7 @@ def _(USER_MESSAGE_2, mo, source_context, text_to_be_verified):
 
     ## User Question
 
-    The claim extraction step explictly requires the last user ask.
+    The claim extraction step explicitly requires the last user ask.
 
     ```plaintext
     {USER_MESSAGE_2}

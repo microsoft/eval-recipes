@@ -41,7 +41,7 @@ def _(mo):
 
     Define your own evaluations using the `EvaluatorProtocol`.
 
-    You evaluation must implement this protocol:
+    Your evaluation must implement this protocol:
     ```python
     class EvaluatorProtocol(Protocol):
         \"""Protocol for custom evaluator classes.\"""
@@ -70,7 +70,7 @@ def _(mo):
 
     ## Custom Criteria Evaluation
 
-    Use the `CheckCriteriaEvaluator` which let's you provide your own criteria and rubrics. Think of this as a catch all for any straighforward criterion or rubrics you want to evaluate against.
+    Use the `CheckCriteriaEvaluator` which lets you provide your own criteria and rubrics. Think of this as a catch-all for any straightforward criterion or rubrics you want to evaluate against.
 
     ```python
     criteria_config = CheckCriteriaEvaluationConfig(

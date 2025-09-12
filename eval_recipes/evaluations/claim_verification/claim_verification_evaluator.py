@@ -60,7 +60,7 @@ class ClaimVerificationResult(BaseModel):
     )
     citations: list[Citations] = Field(description="Each of the citations supporting the claim.")
     open_domain_justification: str = Field(
-        description="If the claim is not supported with any citations, your justification on if it should be consider as an open-domain claim or not."
+        description="If the claim is not supported with any citations, your justification on if it should be considered as an open-domain claim or not."
     )
     is_open_domain: bool = Field(description="true if the claim is open-domain, false otherwise")
 
