@@ -11,7 +11,7 @@ The built-in `claim_verification` evaluation is based on these two papers: [Clai
 
 # Eval Recipes
 
-**Eval Recipes** is a an evaluation framework that makes it easy to evaluate LLM chat assistants, and does so at a high degree of quality. 
+**Eval Recipes** is an evaluation framework that makes it easy to evaluate LLM chat assistants, and does so at a high degree of quality. 
 We use [recipes](https://sundaylettersfromsam.substack.com/p/what-is-an-ai-recipe) to develop specialized evaluation workflows that score conversations on 
 dimensions such as how well the assistant adhered to user preferences or if they did not generate any hallucinations.
 
@@ -41,19 +41,19 @@ uv pip install "git+https://github.com/microsoft/eval-recipes"
 ```
 
 > [!WARNING]
-> This library is very early and everything is subject to change. Consider pinning the dependency to a commit with the command like: `uv pip install "git+https://github.com/microsoft/eval-recipes@v0.0.5"`
+> This library is very early and everything is subject to change. Consider pinning the dependency to a commit with the command like: `uv pip install "git+https://github.com/microsoft/eval-recipes@v0.0.6"`
 
 
 ## High Level API
 
-The primary way of interacting with the package is high-level API which takes in a list of messages
+The primary way of interacting with the package is the high-level API which takes in a list of messages
 (defined by [OpenAI's responses API](https://platform.openai.com/docs/api-reference/responses/create#responses_create-input))
 and a list of [custom tool definitions](https://platform.openai.com/docs/api-reference/responses/create#responses_create-tools) (built-in tools are not supported).
 
 Each evaluation will output if it is deemed applicable to your input, an overall `score` from 0 to 100, and additional metadata specific to that evaluation.
 
-Currently there are several built in evaluations: `claim_verification`, `tool_usage`, `guidance`, and `preference_adherence`.
-For more details how these evaluations work, check the Low Level API section below.
+Currently there are several built-in evaluations: `claim_verification`, `tool_usage`, `guidance`, and `preference_adherence`.
+For more details on how these evaluations work, check the Low Level API section below.
 Each evaluation can be additionally configured, such as selecting the LLM used. The full configurations are defined in [schemas.py](./eval_recipes/schemas.py).
 
 `evaluate` will return a list of [`EvaluationOutput`](./eval_recipes/schemas.py) instances corresponding to each evaluation.
@@ -116,7 +116,7 @@ You can create custom evaluators by implementing a class that follows the [`Eval
 This allows you to extend the evaluation framework with domain-specific metrics tailored to your needs.
 
 Custom evaluators must implement:
-1. An `__init__` method that accepts an optional `BaseEvaluatorConfig` parameter. If a config is not not provided, you must initialize a default.
+1. An `__init__` method that accepts an optional `BaseEvaluatorConfig` parameter. If a config is not provided, you must initialize a default.
 2. An async `evaluate` method that takes messages and tools as input and returns an `EvaluationOutput`
 
 Here is an example of a custom evaluator that scores based on the length of the assistant's response being used in conjunction with the `preference_adherence` evaluator:
@@ -200,6 +200,11 @@ Check [utils.py `create_client`](./eval_recipes/utils/llm.py) to troubleshoot an
 ## Low Level API
 
 [LOW_LEVEL_API.md](./docs/LOW_LEVEL_API.md)
+
+
+## Changelog
+
+[CHANGELOG.md](./docs/CHANGELOG.md)
 
 
 ## Roadmap
@@ -362,7 +367,7 @@ asyncio.run(main())
 ### Preference Adherence
 
 Evaluates how well an assistant adheres to user preferences.
-It first will extracts user preferences from messages and then evaluates adherence to **each** of them.
+It first extracts user preferences from messages and then evaluates adherence to **each** of them.
 
 **Metric**: Number of preferences adhered to / total number of preferences
 
