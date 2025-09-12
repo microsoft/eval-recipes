@@ -249,10 +249,15 @@ Each piece of context is wrapped in XML tags with a unique identifier, like <sou
 and each part of the content has a line number at the start of each line like 1→. \
 In order to make sure you capture the content correctly, select an extra line before and after the relevant part of the context. \
 Remember that the end_range is **exclusive**, so sure to set it to the line number of the last line you want to include, plus one.
+
+After determining if the claim is supported, you must provide a `verified_probability` (0-100 scale) representing your confidence that the claim is truly verified by the context. \
+Consider factors like: clarity of support, directness of evidence, and whether all parts of the claim are addressed.
+
 As a final step, if the claim is not fully supported, you must evaluate whether this claim actually requires verification. \
 You should always provide an open_domain_justification if the claim has no citations.
 This is to prevent penalizing text that is meant to synthesize new knowledge, provide new insights, generate new code to solve a problem, or to provide creative or subjective content. \
 Thus, it is critical to consider the user's ask and intent when making this determination. \
+After your justification, provide an `open_domain_probability` (0-100 scale) representing your confidence that the claim is truly open-domain and doesn't require verification. \
 Consider this provided criteria for deciding when a claim is actually "open-domain" and should not be treated as un-verified:
 - Novel content (code generation, or engineering plans).
 - Creative tasks (creative writing, hypothetical examples)
@@ -297,7 +302,7 @@ you will NOT argue that the context does not provide a comprehensive list of all
 Instead, you will consider the context to be the only source of truth and since it only supports the conclusion that John led one team, the context does NOT justify the entire claim. \
 Similarly, if one source in the context provides a list of teams and another source indicates that some teams were led by John, it IS valid to cross-reference the lists to determine the number of teams John led.
 
-Note the following examples where you should mark a claim as open-domain after verification:
+Consider the following examples that should be marked as open-domain after verification:
 ---
 Context: Contains raw trend data (that should be cited and verified)
 User Ask: "What are the implications of these trends?"
@@ -328,5 +333,7 @@ Start by writing your justification, or proof, for why that is. \
 If it is supported, then you must write down **all** of the citations that prove that it is supported. \
 If it is not supported, do not write down any citations. \
 At any point if you change your mind you can set the start_range equal to the end_range which will invalidate that citation.
-Finally, provide `open_domain_justification`, against the criteria and considering the user's intent, if the claim is not supported with any citations \
-and set the `is_open_domain` flag to true if the claim is open-domain, false otherwise."""
+After your justification and citations (if any), provide a `verified_probability` (0-100) of how confident you are that the claim is verified.
+Finally, provide `open_domain_justification`, against the criteria and considering the user's intent, if the claim is not supported with any citations. \
+Then provide an `open_domain_probability` (0-100) of how confident you are that the claim is open-domain. \
+Set the `is_open_domain` flag to true if the claim is open-domain, false otherwise."""

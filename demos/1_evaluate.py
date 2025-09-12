@@ -726,9 +726,9 @@ def _(get_result_by_name, mo, render_evaluation_result, results):
     # Extract claim verification metadata
     cv_metadata = cv_result.metadata
     cv_total_claims = cv_metadata.get("total_claims", 0)
-    cv_supported = cv_metadata.get("number_supported_claims", 0)
-    cv_open_domain = cv_metadata.get("number_open_domain_claims", 0)
-    cv_not_supported = cv_metadata.get("number_not_supported_claims", 0)
+    cv_supported = cv_metadata.get("num_closed_domain_supported", 0)
+    cv_open_domain = cv_metadata.get("num_open_domain_claims", 0)
+    cv_not_supported = cv_total_claims - (cv_supported + cv_open_domain)
     cv_claims = cv_metadata.get("claims", [])
 
     # Build claim statistics section
@@ -738,7 +738,7 @@ def _(get_result_by_name, mo, render_evaluation_result, results):
     ### Claim Statistics
 
     - **Total Claims:** *{cv_total_claims}*
-    - **Supported Claims:** *{cv_supported}*
+    - **Supported, Closed, Domain Claims:** *{cv_supported}*
     - **Open Domain Claims:** *{cv_open_domain}*
     - **Unsupported Claims:** *{cv_not_supported}*"""
 

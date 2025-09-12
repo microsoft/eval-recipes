@@ -30,7 +30,7 @@ uv pip install "git+https://github.com/microsoft/eval-recipes"
 ```
 
 > [!WARNING]
-> This library is very early and everything is subject to change. Consider pinning the dependency to a commit with the command like: `uv pip install "git+https://github.com/microsoft/eval-recipes@v0.0.5"`
+> This library is very early and everything is subject to change. Consider pinning the dependency to a commit with the command like: `uv pip install "git+https://github.com/microsoft/eval-recipes@v0.0.6"`
 
 
 ## High Level API
@@ -189,6 +189,11 @@ Check [utils.py `create_client`](./eval_recipes/utils/llm.py) to troubleshoot an
 ## Low Level API
 
 [LOW_LEVEL_API.md](./docs/LOW_LEVEL_API.md)
+
+
+## Changelog
+
+[CHANGELOG.md](./docs/CHANGELOG.md)
 
 
 ## Roadmap

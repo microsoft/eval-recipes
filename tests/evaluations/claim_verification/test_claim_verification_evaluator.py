@@ -51,10 +51,4 @@ async def test_claim_verifier_evaluate(messages) -> None:
     )
     claim_verifier = ClaimVerificationEvaluator(config=config)
     result = await claim_verifier.evaluate(messages=messages, tools=[])
-
-    print(f"Evaluation result: {result}")
-
-    print(f"Score: {result.score}")
-    print(f"Total claims: {result.metadata['total_claims']}")
-    print(f"Supported claims: {result.metadata['number_supported_claims']}")
-    print(f"Open domain claims: {result.metadata['number_open_domain_claims']}")
+    print(result)
