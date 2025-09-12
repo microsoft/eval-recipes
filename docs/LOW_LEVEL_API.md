@@ -147,7 +147,7 @@ asyncio.run(main())
 ### Preference Adherence
 
 Evaluates how well an assistant adheres to user preferences.
-It first will extracts user preferences from messages and then evaluates adherence to **each** of them.
+It first extracts user preferences from messages and then evaluates adherence to **each** of them.
 
 **Metric**: Number of preferences adhered to / total number of preferences
 

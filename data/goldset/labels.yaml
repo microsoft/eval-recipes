@@ -8,7 +8,7 @@ guidance_test_1.json:
   claim_verification:
     applicable: true
     expected_score: 80
-    notes: "The claims made in the response are largely, but if we being pedantic, it talks about a basic markdown document as slides which is not the reality."
+    notes: "The response has some pedantic hallucinations in the beginning such as saying Each slide shares a fun fact, but the intro and conclusion do not. It also says that it made a slide show when that is not really the case (just an md file)."
   tool_usage:
     applicable: true
     expected_score: 0
@@ -16,7 +16,7 @@ guidance_test_1.json:
   guidance:
     applicable: true
     expected_score: 5
-    notes: "The assistant cannot make actual slide shows, but it goes and puts content into a markdown document without checking in with the user."
+    notes: "The assistant cannot make actual slide shows, but it puts content into a markdown document without checking in with the user."
 
 guidance_test_2.json:
   preference_adherence:
@@ -24,7 +24,7 @@ guidance_test_2.json:
     notes: "The user doesn't explictly mention any preferences."
   claim_verification:
     applicable: false
-    notes: "The claims made in the response are largely, but if we being pedantic, it talks about a basic markdown document as slides which is not the reality."
+    notes: "The assistant describes generically how to create a calendar event and there is nothing in the source to reference. So this should be deemed as open domain."
   tool_usage:
     applicable: true
     expected_score: 100

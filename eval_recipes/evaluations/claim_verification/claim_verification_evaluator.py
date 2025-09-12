@@ -36,6 +36,8 @@ class ClaimVerificationEvaluatorConfig(BaseEvaluatorConfig):
     claim_extraction_model: Literal["gpt-5", "gpt-5-mini", "gpt-5-nano", "o3", "o4-mini"] = Field(default="gpt-5-mini")
     verification_model: Literal["gpt-5", "gpt-5-mini", "gpt-5-nano", "o3", "o4-mini"] = Field(default="gpt-5")
     verification_reasoning_effort: Literal["minimal", "low", "medium", "high"] = Field(default="high")
+    verification_threshold: float = Field(default=70)  # Score threshold above which a claim is considered verified
+    is_open_domain_threshold: float = Field(default=50)  # Score threshold above which a claim is considered open-domain
     max_line_length: int = Field(default=200)
     max_concurrency: int = Field(default=1)
     ignore_tool_names: list[str] = Field(
@@ -59,8 +61,14 @@ class ClaimVerificationResult(BaseModel):
         description="Your justification for why the claim is grounded in the source, with the content from start_range to end_range as proof."
     )
     citations: list[Citations] = Field(description="Each of the citations supporting the claim.")
+    verified_probability: float = Field(
+        description="Now that you have a justification for if the claim is verified if so generated citations, determine the probability (on a scale of 0 to 100) that the claim is truly verified."
+    )
     open_domain_justification: str = Field(
-        description="If the claim is not supported with any citations, your justification on if it should be consider as an open-domain claim or not."
+        description="If the claim is not supported with any citations, your justification on if it should be considered as an open-domain claim or not. Be sure to reason about both the case where the claim is and is not open-domain."
+    )
+    open_domain_probability: float = Field(
+        description="Now that you have a justification for if the claim is open-domain, determine the probability (on a scale of 0 to 100) that the claim is truly open-domain."
     )
     is_open_domain: bool = Field(description="true if the claim is open-domain, false otherwise")
 
@@ -97,12 +105,11 @@ class ClaimVerificationEvaluator:
             source_context=source_context,
         )
 
-        # Collect all results from the async generator
         results = []
         async for result in self.run(input_data):
             results.append(result)
 
-        # The last result should be the metrics
+        # The last result should be the final summary metrics
         if results and isinstance(results[-1], OutputClaimVerificationEvaluatorMetrics):
             metrics = results[-1]
             claims = results[:-1]  # All results except the last one are claims
@@ -113,10 +120,9 @@ class ClaimVerificationEvaluator:
                 feedback=self._feedback([x for x in results if isinstance(x, OutputClaimVerificationEvaluator)]),
                 metadata={
                     "total_claims": metrics.total_claims,
-                    "number_supported_claims": metrics.number_supported_claims,
-                    "number_open_domain_claims": metrics.number_open_domain_claims,
-                    "number_not_supported_claims": metrics.number_not_supported_claims,
-                    "ignore_metric_recommended": metrics.ignore_metric_recommended,
+                    "num_closed_domain_supported": metrics.num_closed_domain_supported,
+                    "num_open_domain_claims": metrics.num_open_domain_claims,
+                    "total_claims_closed_domain": metrics.total_claims_closed_domain,
                     "claims": [claim.model_dump(mode="json") for claim in claims],
                 },
             )
@@ -151,26 +157,22 @@ class ClaimVerificationEvaluator:
             - closed_domain_supported: Percentage of closed-domain claims supported
             - ignore_metric_recommended: Whether closed_domain_supported is recommended to be ignored due to high likelihood of an answer that does not need verification. Heuristically determined.
             - number_supported_claims: Count of claims with citations
-            - number_open_domain_claims: Count of claims considered open-domain
+            - num_open_domain_claims: Count of claims considered open-domain
             - number_not_supported_claims: Count of claims not supported by citations or open-domain
         """
         logger.info("Starting claim verification")
 
-        # Store input and formatted context as instance variables for use in other methods
         self.input = input
         self.formatted_context = FormattedContext(input, self.config.max_line_length)
 
-        # Split text into sentences
         sentences = self._sentence_splitting(p=2, f=2)
         logger.info(f"Split text into {len(sentences)} sentences")
-
-        # Accumulate results for final metrics calculation
-        accumulated_results: list[OutputClaimVerificationEvaluator] = []
 
         semaphore = asyncio.Semaphore(self.config.max_concurrency)
         tasks = [self._process_sentence_with_semaphore(semaphore, i, sentence) for i, sentence in enumerate(sentences)]
 
         # Process results as they complete and yield individual claims
+        accumulated_results: list[OutputClaimVerificationEvaluator] = []
         for completed_task in asyncio.as_completed(tasks):
             sentence_results = await completed_task
             for result in sentence_results:
@@ -179,7 +181,6 @@ class ClaimVerificationEvaluator:
 
         logger.info(f"Claim verification complete. Total claims verified: {len(accumulated_results)}")
 
-        # Yield final metrics
         metrics = self._compute_metrics(accumulated_results)
         yield metrics
 
@@ -202,7 +203,7 @@ class ClaimVerificationEvaluator:
         """
         logger.info(f'Processing sentence {sentence_index + 1}: "{sentence.sentence[:100]!r}..."')
 
-        # Create ClaimExtraction input for this sentence
+        # Extract all claims from the sentence
         sentence_input = InputClaimExtraction(
             sentence=sentence.sentence,
             excerpt=sentence.sentence_with_surrounding_context,
@@ -215,11 +216,11 @@ class ClaimVerificationEvaluator:
         )
         claims: list[str] = await claim_extractor.run()
 
+        # Verify each claim in parallel
         claim_semaphore = asyncio.Semaphore(self.config.max_concurrency)
         verification_tasks = []
         for claim_output in claims:
             logger.info(f"Verifying claim: {claim_output[:100]}...")
-            # Create a task for each claim verification with semaphore control
             task = self._verify_single_claim_with_semaphore(claim_semaphore, sentence, claim_output)
             verification_tasks.append(task)
 
@@ -241,7 +242,9 @@ class ClaimVerificationEvaluator:
                 claim=claim_output,
                 proof=claim_verification_result.proof,
                 citations=claim_verification_result.citations,
+                verified_probability=claim_verification_result.verified_probability,
                 open_domain_justification=claim_verification_result.open_domain_justification,
+                open_domain_probability=claim_verification_result.open_domain_probability,
                 is_open_domain=claim_verification_result.is_open_domain,
             )
             return combined_result
@@ -315,7 +318,9 @@ class ClaimVerificationEvaluator:
             structured_result = ClaimVerificationResult(
                 proof="",
                 citations=[],
+                verified_probability=0.0,
                 open_domain_justification="",
+                open_domain_probability=0.0,
                 is_open_domain=False,
             )
         else:
@@ -339,48 +344,50 @@ class ClaimVerificationEvaluator:
         return OutputClaimVerificationStep(
             proof=result.proof,
             citations=output_citations,
+            verified_probability=result.verified_probability,
             open_domain_justification=result.open_domain_justification,
+            open_domain_probability=result.open_domain_probability,
             is_open_domain=result.is_open_domain,
         )
 
     def _compute_metrics(
         self, results: list[OutputClaimVerificationEvaluator]
     ) -> OutputClaimVerificationEvaluatorMetrics:
-        """Compute metrics from the verification results."""
-        total_claims = len(results)
-
-        # Count different types of claims
-        supported_claims = [r for r in results if r.citations]
-        open_domain_claims = [r for r in results if r.is_open_domain]
-        not_supported_claims = [r for r in results if not r.citations and not r.is_open_domain]
-
-        number_supported_claims = len(supported_claims)
-        number_open_domain_claims = len(open_domain_claims)
-        number_not_supported_claims = len(not_supported_claims)
+        num_closed_domain_supported = 0
+        num_open_domain_claims = 0
+        total_claims_closed_domain = 0
+        for r in results:
+            is_supported = r.verified_probability >= self.config.verification_threshold
+            is_open_domain = r.open_domain_probability >= self.config.is_open_domain_threshold
+            if not is_open_domain:
+                total_claims_closed_domain += 1
+                if is_supported:
+                    num_closed_domain_supported += 1
+            else:
+                num_open_domain_claims += 1
 
         # Calculate closed domain supported percentage
         # Closed domain claims are those that are not open domain
-        closed_domain_claims = [r for r in results if not r.is_open_domain]
-        if closed_domain_claims:
-            closed_domain_supported = round((number_supported_claims / len(closed_domain_claims)) * 100, 2)
-        else:
-            closed_domain_supported = 0.0
+        closed_domain_supported = (
+            (num_closed_domain_supported / total_claims_closed_domain) * 100 if total_claims_closed_domain > 0 else 0
+        )
 
         # Compute ignore metric recommendation
         # We should set ignore_metric_recommended to True when:
         # - There are less than or equal to 2 claims
         # - The number of open domain claims is greater than the number of closed domain claims AND the closed_domain_supported metric is less than 15%
+        total_claims = len(results)
         ignore_metric_recommended = total_claims <= 2 or (
-            number_open_domain_claims > len(closed_domain_claims) and closed_domain_supported < 15.0
+            num_open_domain_claims > total_claims_closed_domain and closed_domain_supported < 15.0
         )
 
         return OutputClaimVerificationEvaluatorMetrics(
             total_claims=total_claims,
             closed_domain_supported=closed_domain_supported,
-            number_supported_claims=number_supported_claims,
-            number_open_domain_claims=number_open_domain_claims,
-            number_not_supported_claims=number_not_supported_claims,
             ignore_metric_recommended=ignore_metric_recommended,
+            num_closed_domain_supported=num_closed_domain_supported,
+            num_open_domain_claims=num_open_domain_claims,
+            total_claims_closed_domain=total_claims_closed_domain,
         )
 
     def _feedback(self, results: list[OutputClaimVerificationEvaluator]) -> str | None:

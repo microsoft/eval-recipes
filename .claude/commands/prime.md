@@ -8,4 +8,4 @@ READ:
 RUN:
 - list files to get a sense of the project structure
   - Unless the user asks, ignore the `data` and `demos` dirs as they have a lot of context
-- `make check` and fix any issues
+- `make check` and fix any issues. Do not run any other checks, `make check` handles linting, formatting, type checks, etc

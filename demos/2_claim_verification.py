@@ -499,7 +499,7 @@ def _(USER_MESSAGE_2, mo, source_context, text_to_be_verified):
 
     ## User Question
 
-    The claim extraction step explictly requires the last user ask.
+    The claim extraction step explicitly requires the last user ask.
 
     ```plaintext
     {USER_MESSAGE_2}
@@ -631,9 +631,9 @@ async def process_verification_events(verifier, input_data, title, mo):
             metrics_md = f"""## Summary Metrics
 
 - **Total Claims:** {event.total_claims}
-- **Verified Claims:** {event.number_supported_claims}
-- **Open Domain Claims:** {event.number_open_domain_claims}
-- **Not Verified Claims:** {event.number_not_supported_claims}
+- **Verified Claims:** {event.num_closed_domain_supported}
+- **Open Domain Claims:** {event.num_open_domain_claims}
+- **Not Verified Claims:** {event.total_claims - (event.num_closed_domain_supported + event.num_open_domain_claims)}
 - **Closed Domain Support Rate:** {event.closed_domain_supported:.1f}%
 - **Ignore Metric Recommended:** {"Yes" if event.ignore_metric_recommended else "No"}
 
@@ -707,7 +707,7 @@ def _(mo):
         closed_domain_supported: float  # Percentage of claims that are supported, of the ones that are closed-domain (assumes supported are closed-domain)
         ignore_metric_recommended: bool  # Indicates if the metric has a high chance to being irrelevant to the input
         number_supported_claims: int  # Number of claims that are supported by citations
-        number_open_domain_claims: int  # Number of claims that are considered open-domain (and not supported)
+        num_open_domain_claims: int  # Number of claims that are considered open-domain (and not supported)
         number_not_supported_claims: int  # Number of claims that are not supported by citations and not open-domain
     ```
     """

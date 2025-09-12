@@ -60,9 +60,7 @@ class ToolUsageEvaluator:
         Initialize the ToolUsageEvaluator.
 
         Args:
-            input: InputToolUsageEvaluator containing tools and conversation data to evaluate
-            provider: The AI provider to use ("openai" or "openai")
-            model: The model to use for evaluation (default: "o3")
+            config: Optional ToolUsageEvaluatorConfig. If not provided, defaults will be used.
         """
         self.config = config or ToolUsageEvaluatorConfig()
 

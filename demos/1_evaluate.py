@@ -14,14 +14,14 @@ def _(mo):
 
     Evaluating LLM-based *applications* is hard, this package aims to make it easier, while giving you the flexbility to customize for your unique needs.
 
-    When you see the word "evaluations" in the context of LLMs it could refer to a few things [1]:
+    When you see the word "evaluations" in the context of LLMs, it could refer to a few things [1]:
 
     1. Industry benchmarks for comparing models in isolation, like [MMLU](https://github.com/openai/evals/blob/main/examples/mmlu.ipynb), [ARC-AGI](https://github.com/arcprize/ARC-AGI-2), and those listed on [HuggingFace's leaderboard](https://huggingface.co/collections/open-llm-leaderboard/the-big-benchmarks-collection-64faca6335a7fc7d4ffe974a)
     2. Industry benchmarks for comparing specific portions of a system, like memory (ex. [LongMemEval](https://github.com/xiaowu0162/LongMemEval)) or agentic software engineering tasks (ex. [SWE Bench Verified](https://huggingface.co/datasets/princeton-nlp/SWE-bench_Verified)).
     3.  Standard numerical scores like [ROUGE](https://aclanthology.org/W04-1013/) or [BERTScore](https://arxiv.org/abs/1904.09675)
     4. Specific tests you implement to measure your LLM application's performance.
 
-    This package is about the last type: providing a set of common "tests" to measure your application's performance. We refer to these as **online evaluations** or **telemetry** as they are scores that computed as your application runs, without the need for explict labeled data.
+    This package is about the last type: providing a set of common "tests" to measure your application's performance. We refer to these as **online evaluations** or **telemetry** as they are scores that are computed as your application runs, without the need for explicit labeled data.
     In this notebook, we show the four core evaluations we provide: claim verification[2], measuring if user preferences are adhered to, does the assistant provide proper guidance when needed, and does it use tools effectively.
 
     The differences between our evaluations and other open source evaluation frameworks are:
@@ -83,7 +83,7 @@ def _(mo):
         r"""
     # High Level API
 
-    Assistant evaluations exposes one high level function, `evaluate`, which expects the inputs you are already likely using in your assistant: chat messages and tool definitions. Specifically, we use the same parameters as the [OpenAI Responses API](https://platform.openai.com/docs/api-reference/responses/create#responses_create-input). We chose this because it is likely what you are already using and it is a common standard even for other LLM providers to support. It is also straighforward to write your own conversion from any other message and tool types.
+    Assistant evaluations expose one high level function, `evaluate`, which expects the inputs you are already likely using in your assistant: chat messages and tool definitions. Specifically, we use the same parameters as the [OpenAI Responses API](https://platform.openai.com/docs/api-reference/responses/create#responses_create-input). We chose this because it is likely what you are already using and it is a common standard even for other LLM providers to support. It is also straightforward to write your own conversion from any other message and tool types.
     """
     )
     return
@@ -112,13 +112,13 @@ def _(mo):
 
     In the following cell, we define an example scenario. Since the contents are lengthy, we describe it in words here:
 
-    1. The system prompt encourages the model to call tools, contains a memories, and the assistant is provided with 4 core tools around search and file viewing/editing.
+    1. The system prompt encourages the model to call tools, contains memories, and the assistant is provided with 4 core tools around search and file viewing/editing.
     2. The user has uploaded a file called "Earnings Release FY24 Q4.md" which contains Microsoft's financial data from that quarter.
     3. They ask for the assistant to read the file and asks for the key metrics.
     4. The assistant calls the `ls` tool to find the exact file path and then uses the `view` tool to read it
     5. Finally, the textbox below is a hypothetical message that an assistant can generate. **Note these two important aspects about the default response** for when we look at the final results:
-        * The responses is bulleted list form, while there is a user memory in the system prompt that suggests to use paragraphs instead
-        * The responses contains an intentional factual inaccuracy where one of the financial figures was changed from 22.0B to 15.0B.
+        * The response is in bulleted list form, while there is a user memory in the system prompt that suggests using paragraphs instead
+        * The response contains an intentional factual inaccuracy where one of the financial figures was changed from 22.0B to 15.0B.
 
     Try to change the response to see how it changes the evaluation results!
     """
@@ -433,7 +433,7 @@ def _(mo):
     - **`verification_reasoning_effort`**: The reasoning effort level for verification. It is important that verification is accurate, so using the most capable model is recommended.
     - **`max_line_length`** (`int`): Maximum character length per line when formatting source documents. Lines longer than this are wrapped. Default: `200`
     - **`max_concurrency`** (`int`): Sets the maximum number of sentences **and** claims within a sentence that can be processed at once. Default: `1`
-    - **`ignore_tool_names`** (`list[str]`): List of tool names whose outputs should not be used as source context for verification. Useful for excluding tools that return LLM generated content such as generated documents.
+    - **`ignore_tool_names`** (`list[str]`): List of tool names whose outputs should not be used as source context for verification. Useful for excluding tools that return LLM-generated content such as generated documents.
 
 
     ### Guidance Evaluation (`GuidanceEvaluationConfig`)
@@ -726,9 +726,9 @@ def _(get_result_by_name, mo, render_evaluation_result, results):
     # Extract claim verification metadata
     cv_metadata = cv_result.metadata
     cv_total_claims = cv_metadata.get("total_claims", 0)
-    cv_supported = cv_metadata.get("number_supported_claims", 0)
-    cv_open_domain = cv_metadata.get("number_open_domain_claims", 0)
-    cv_not_supported = cv_metadata.get("number_not_supported_claims", 0)
+    cv_supported = cv_metadata.get("num_closed_domain_supported", 0)
+    cv_open_domain = cv_metadata.get("num_open_domain_claims", 0)
+    cv_not_supported = cv_total_claims - (cv_supported + cv_open_domain)
     cv_claims = cv_metadata.get("claims", [])
 
     # Build claim statistics section
@@ -738,7 +738,7 @@ def _(get_result_by_name, mo, render_evaluation_result, results):
     ### Claim Statistics
 
     - **Total Claims:** *{cv_total_claims}*
-    - **Supported Claims:** *{cv_supported}*
+    - **Supported, Closed, Domain Claims:** *{cv_supported}*
     - **Open Domain Claims:** *{cv_open_domain}*
     - **Unsupported Claims:** *{cv_not_supported}*"""
 
