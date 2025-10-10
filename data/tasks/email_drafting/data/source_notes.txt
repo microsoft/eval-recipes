@@ -1,0 +1,23 @@
+Email to: Sarah Chen (sarah.chen@techcorp.com)
+Subject: Need to discuss - API integration timeline
+
+Context:
+- API integration module was due April 15 (from Q2 agreement)
+- We hit unexpected issues with the rate limiting implementation
+- Auth flow changes Sarah mentioned are taking longer than expected
+- Now looking at April 22 delivery instead
+
+Key points to cover:
+- Delay notification - April 22 instead of April 15
+- Two reasons: rate limiting complexity + auth flow adjustments
+- No impact to dashboard redesign (May 1) or performance report (May 20)
+- We've added extra testing to ensure quality
+- Want to schedule 30 min call this week to walk through what we've built so far
+- Can provide preview access to staging environment if helpful
+
+Tone: Professional but transparent about the issue. Sarah values honesty.
+
+Questions for her:
+- Does April 22 timeline work for her team?
+- Would preview access be useful?
+- Preferred time for walkthrough call?

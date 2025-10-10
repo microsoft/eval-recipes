@@ -13,7 +13,11 @@ install-all:
 
 check:
 ifeq ($(OS),Windows_NT)
-	.venv\Scripts\activate && ruff check --no-cache --fix . && ruff format --no-cache .
+	uv run ruff check --no-cache --fix .
+	uv run ruff format --no-cache .
+	uv run pyright
 else
-	. .venv/bin/activate && ruff check --no-cache --fix . && ruff format --no-cache .
+	uv run ruff check --no-cache --fix .
+	uv run ruff format --no-cache .
+	uv run pyright
 endif

@@ -1,0 +1,29 @@
+Date: Wed, 10 Apr 2024 11:52:36 -0400
+To: rachel.thompson@company.com
+Subject: Phoenix Project - Critical Path Analysis for Q2
+
+Rachel,
+
+Concerns about June 30 deadline.
+
+Status:
+- 68% complete
+- QA needs 3 weeks (budgeted 4)
+- 2 external dependencies pending
+- 11 weeks left
+
+Risks:
+- Security review: 2-3 weeks historical vs 1 week budgeted
+- June holidays: -20% dev hours
+- Legacy integration: more complex than estimated
+
+Recommendations:
+1. Defer advanced reporting to Q3
+2. Add 1 QA resource for final month
+3. VP-level escalation on dependencies
+
+30 min this week? Have Gantt chart + risk matrix.
+
+Surfacing now while we have options.
+
+Alex

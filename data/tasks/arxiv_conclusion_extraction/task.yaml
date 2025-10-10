@@ -1,0 +1,4 @@
+task_info:
+  difficulty: easy
+  non_deterministic_evals: false
+test_command: uv run --no-project /project/test.py --conclusion /project/Conclusion.txt

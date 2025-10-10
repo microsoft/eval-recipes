@@ -1,6 +1,6 @@
 [project]
 name = "eval_recipes"
-version = "0.0.6"
+version = "0.0.7"
 description = "Eval Recipes"
 authors = [{ name = "Semantic Workbench Team" }]
 readme = "README.md"
@@ -8,9 +8,12 @@ requires-python = ">=3.11"
 dependencies = [
     "azure-core[aio]>=1.35,<2.0",
     "azure-identity>=1.24,<2.0",
+    "claude-agent-sdk==0.1.1",
+    "click>=8.3,<9.0",
+    "docker>=7.1,<8.0",
     "loguru>=0.7,<1.0",
     "nltk>=3.9,<4.0",
-    "openai[aiohttp]>=1.106,<2.0",
+    "openai[aiohttp]>=2.1,<3.0",
     "pydantic>=2.11,<3.0",
     "python-dotenv>=1.1,<2.0",
     "python-liquid>=2.1,<3.0",
@@ -40,6 +43,8 @@ build-backend = "hatchling.build"
 line-length = 120
 exclude = [
     "demos",
+    "data",
+    "ai_context",
 ]
 
 [tool.ruff.lint]
@@ -101,5 +106,5 @@ auto_instantiate=false
 on_cell_change="lazy"
 
 [tool.pyright]
-ignore = ["demos"]
+ignore = ["demos", "ai_context"]
 typeCheckingMode = "standard"

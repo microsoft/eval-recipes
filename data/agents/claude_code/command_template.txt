@@ -1,0 +1,1 @@
+claude --verbose --output-format stream-json -p "{{task_instructions}}" --allowedTools --allowedTools "Bash Edit Write Read Glob Grep LS WebFetch NotebookEdit NotebookRead TodoRead TodoWrite Agent"
