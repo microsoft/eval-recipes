@@ -31,7 +31,7 @@ jobs:
         run: uv python install
       
       - name: Install dependencies using make
-        run: make install
+        run: make install-all
       
       - name: Run tests
         env:
