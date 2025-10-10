@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from eval_recipes.benchmarking.semantic_test import semantic_test
 
 
@@ -94,6 +96,7 @@ def test_divide():
     return project_dir
 
 
+@pytest.mark.skip(reason="require claude code installation")
 async def test_semantic_test_calculator_project(tmp_path: Path) -> None:
     """
     Integration test: Evaluate a sample calculator project.
