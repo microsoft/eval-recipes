@@ -1,0 +1,25 @@
+Date: Mon, 22 Apr 2024 14:19:55 -0400
+To: kevin.brown@company.com
+Subject: Request for Feedback - Code Review Process Improvements
+
+Kevin,
+
+Improving code review process. Need your input.
+
+Working well:
+- 24hr turnaround
+- Catching more bugs
+
+Considering:
+- Automated style checks
+- Complexity rating system
+- Better comment documentation
+
+Questions:
+1. Your experience with current process?
+2. Practices from other teams to adopt?
+3. Pain points I'm missing?
+
+20 min next week? Email thoughts also helpful.
+
+Alex

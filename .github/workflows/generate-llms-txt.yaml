@@ -34,8 +34,10 @@ jobs:
           files=(
             "README.md"
             "docs/LOW_LEVEL_API.md"
+            "docs/BENCHMARKING.md"
             "eval_recipes/evaluate.py"
             "eval_recipes/schemas.py"
+            "scripts/run_benchmarks.py"
           )
           
           for file in "${files[@]}"; do

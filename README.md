@@ -30,7 +30,7 @@ uv pip install "git+https://github.com/microsoft/eval-recipes"
 ```
 
 > [!WARNING]
-> This library is very early and everything is subject to change. Consider pinning the dependency to a commit with the command like: `uv pip install "git+https://github.com/microsoft/eval-recipes@v0.0.6"`
+> This library is very early and everything is subject to change. Consider pinning the dependency to a commit with the command like: `uv pip install "git+https://github.com/microsoft/eval-recipes@v0.0.7"`
 
 
 ## High Level API
@@ -154,6 +154,29 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
+
+
+## Benchmarking
+
+Eval Recipes provides a benchmarking harness for evaluating AI agents on real-world tasks in isolated Docker containers. 
+We have a few sample tasks ranging from creating CLI applications to automations. Agents are automatically scored based on deterministic and semantic tests.
+
+### Running Benchmarks
+
+```bash
+# The default agents/tasks require these environment variables
+export ANTHROPIC_API_KEY=your_anthropic_key
+export OPENAI_API_KEY=your_openai_key
+
+uv run scripts/run_benchmarks.py
+
+# Get more info about available arguments
+uv run scripts/run_benchmarks.py --help
+```
+
+Results are saved to timestamped directories in `data/benchmarking/runs/` containing agent logs, test outputs, and structured results.
+Any of these files may contain secrets that were used during the evaluation run. **NEVER** commit these files to source control without first checking for secrets.
+For detailed documentation on creating custom agents and tasks, see [BENCHMARKING.md](./docs/BENCHMARKING.md).
 
 
 ## Development Installation

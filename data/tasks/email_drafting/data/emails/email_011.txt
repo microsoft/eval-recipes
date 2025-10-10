@@ -1,0 +1,11 @@
+Date: Mon, 03 Jun 2024 15:08:19 -0400
+To: mike.rodriguez@company.com
+Subject: Quick question about the deployment pipeline
+
+Mike,
+
+Staging pipeline changes yesterday?
+
+Docker image tagging looks different. Intentional or broke?
+
+Alex

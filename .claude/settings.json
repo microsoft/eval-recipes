@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "mcp__ide__getDiagnostics",
-      "Bash(make:*)"
+      "Bash(make:*)",
+      "WebSearch",
+      "Fetch"
     ],
     "deny": [],
     "ask": []

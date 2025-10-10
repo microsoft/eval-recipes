@@ -1,0 +1,6 @@
+required_env_vars:
+  - ANTHROPIC_API_KEY
+task_info:
+  difficulty: hard
+  non_deterministic_evals: true
+test_command: uv run --no-project /project/test.py

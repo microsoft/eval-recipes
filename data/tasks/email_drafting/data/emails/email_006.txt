@@ -1,0 +1,14 @@
+Date: Mon, 08 Apr 2024 09:42:17 -0400
+To: sarah.chen@techcorp.com
+Subject: Re: API Integration - Additional Requirements
+
+Sarah,
+
+Reviewed new specs. Two clarifying questions:
+
+1. Rate limiting (p.7): Client-side throttling or API-side? Affects architecture.
+2. Auth flow: Differs from kickoff discussion. Need alignment.
+
+Call helpful? Available Thurs PM or Fri AM. Happy to continue via email.
+
+Alex

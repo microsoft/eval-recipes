@@ -1,6 +1,12 @@
 # Project specific
 __marimo__/
 media/
+data/benchmarking/runs/
+
+# Benchmarking generated reports
+benchmark_report.html
+CONSOLIDATED_REPORT.md
+FAILURE_REPORT.md
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

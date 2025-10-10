@@ -1,0 +1,17 @@
+Create me a CLI tool that will take bullet points or rough notes about what I want to communicate and draft an email in my communication style. Place all the code under the directory scenarios/email_drafting. This tool should use the Claude Agent SDK for all of the necessary LLM interactions (you have an ANTHROPIC_API_KEY env var set up already).
+
+I should be able to point to a directory of my past emails for it to use to understand my tone, formality level, and communication patterns, and then also a source document that contains my key points or rough notes for this email. The tool should support an optional recipient parameter - when provided, it should prioritize past emails to/from that specific recipient to better match how I communicate with them.
+
+The tool should support mode flags to control email length: --mode concise (brief, essential points only), --mode standard (balanced, this is the default), and --mode detailed (comprehensive with context and background).
+
+From there, it should have a writer that can read all of that in and draft up a first pass, trying to match my communication style, tone, level of formality, and the specified brevity mode.
+
+Afterwards, it should pass the resulting draft and the input notes to a content-reviewer to verify that all key points from my notes are covered and nothing important was missed or misrepresented - if issues are found, give feedback and return it to the writer for improvement and back to the content-reviewer.
+
+After this, it should pass the draft and my past emails to a tone-reviewer to verify that it has captured my communication style, formality level, and typical email patterns - same deal, if not return to writer.
+
+Then, it should pass the draft to a brevity-reviewer to verify the email length is appropriate for the selected mode and that it's not unnecessarily verbose - if issues are found, give feedback and return to writer.
+
+Once it all passes, write the final version out for me to review. Give me the opportunity to mark up the email with [bracket-enclosed-comments] and then pass it back to the tool to incorporate my feedback as the final reviewer - start back with the writer and then review again with the other reviewers, including passing my feedback along with the other context they previously had.
+
+Finally, create a README.md under scenarios/email_drafting/ that gives examples of each of the commands that can be used to run the tool.
