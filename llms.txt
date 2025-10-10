@@ -41,7 +41,7 @@ uv pip install "git+https://github.com/microsoft/eval-recipes"
 ```
 
 > [!WARNING]
-> This library is very early and everything is subject to change. Consider pinning the dependency to a commit with the command like: `uv pip install "git+https://github.com/microsoft/eval-recipes@v0.0.6"`
+> This library is very early and everything is subject to change. Consider pinning the dependency to a commit with the command like: `uv pip install "git+https://github.com/microsoft/eval-recipes@v0.0.7"`
 
 
 ## High Level API
@@ -165,6 +165,29 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
+
+
+## Benchmarking
+
+Eval Recipes provides a benchmarking harness for evaluating AI agents on real-world tasks in isolated Docker containers. 
+We have a few sample tasks ranging from creating CLI applications to automations. Agents are automatically scored based on deterministic and semantic tests.
+
+### Running Benchmarks
+
+```bash
+# The default agents/tasks require these environment variables
+export ANTHROPIC_API_KEY=your_anthropic_key
+export OPENAI_API_KEY=your_openai_key
+
+uv run scripts/run_benchmarks.py
+
+# Get more info about available arguments
+uv run scripts/run_benchmarks.py --help
+```
+
+Results are saved to timestamped directories in `data/benchmarking/runs/` containing agent logs, test outputs, and structured results.
+Any of these files may contain secrets that were used during the evaluation run. **NEVER** commit these files to source control without first checking for secrets.
+For detailed documentation on creating custom agents and tasks, see [BENCHMARKING.md](./docs/BENCHMARKING.md).
 
 
 ## Development Installation
@@ -444,6 +467,101 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+## docs/BENCHMARKING.md
+
+# Benchmarking
+
+This module provides a benchmarking harness for evaluating AI agents on real-world tasks within isolated Docker containers.
+
+
+## Running Benchmarks
+
+The benchmarking harness is available via the CLI script `scripts/run_benchmarks.py`.
+
+### Basic Usage
+
+```bash
+# The default agents/tasks require these environment variables
+export ANTHROPIC_API_KEY=your_anthropic_key
+export OPENAI_API_KEY=your_openai_key
+
+# Run all agents on all tasks, by default this will use the existing data/agents/ and data/tasks/ directories
+uv run scripts/run_benchmarks.py --max-parallel-tasks 3
+
+# You can also specify various filters
+uv run scripts/run_benchmarks.py --agent-filter name=claude_code
+uv run scripts/run_benchmarks.py --task-filter name=email_drafting
+uv run scripts/run_benchmarks.py \
+  --agent-filter name=claude_code \
+  --task-filter task_info.difficulty=easy
+```
+
+
+## Creating a New Agent
+
+Agents are defined in the `data/agents/` directory. 
+Each agent is a subdirectory containing the files needed to install and run the agent.
+Included agents are located in [data/agents/](../data/agents/).
+
+```
+data/agents/your_agent_name/
+agent.yaml            # Agent configuration
+install.dockerfile    # Docker commands to install the agent
+command_template.txt  # Liquid template for the command to run the agent
+```
+
+
+## Creating a New Task
+
+Tasks are defined in the `data/tasks/` directory. 
+Each task is a subdirectory containing the files needed to define the task and test the agent's solution.
+Included tasks are available at [data/tasks/](../data/tasks/).
+
+
+### Task Directory Structure
+
+```
+data/tasks/your_task_name/
+task.yaml            # Task configuration (required)
+instructions.txt     # Instructions given to the agent (required)
+test.py              # Python script to test the agent's solution (required)
+setup.dockerfile     # (Optional) Docker commands to set up the task environment
+test_commands.sh     # (Optional) Bash script to run before test.py
+```
+
+### File Descriptions
+
+#### `task.yaml` (Required)
+YAML configuration file for the task.
+
+Required fields:
+- `task_info`: Object containing:
+  - `difficulty`: One of `easy`, `medium`, or `hard`
+  - `non_deterministic_evals`: Boolean indicating if test evaluations are non-deterministic
+
+Optional fields:
+- `required_env_vars`: List of environment variables required for the task (e.g., API keys for evaluation)
+
+#### `setup.dockerfile` (Optional)
+Contains Docker `RUN` commands to install any dependencies needed for the task or tests.
+
+#### `test_commands.sh` (Optional)
+A bash script that runs before `test.py`. This is useful for installing test dependencies using `uv add` or setting up test data or configuration.
+
+The script is executed from `/project` in the container. If it exists, the harness will:
+1. Copy it into the container
+2. Execute it with `bash test_commands.sh`
+3. Save output to `test_commands_output.log`
+4. Then proceed to run `test.py`
+
+#### `instructions.txt` (Required)
+Plain text instructions that will be passed to the agent. This describes what the agent should build or solve.
+
+#### `test.py` (Required)
+A Python test script that validates the agent's solution and outputs a score.
+
+All test scripts must follow a standardized contract for integration with the harness. See **[data/tasks/test_template.py](../data/tasks/test_template.py)** for the complete contract specification, detailed documentation, and a reference implementation you can copy when creating new tasks.
+
 ## eval_recipes/evaluate.py
 
 # Copyright (c) Microsoft. All rights reserved.
@@ -577,3 +695,108 @@ class EvaluatorProtocol(Protocol):
     async def evaluate(self, messages: ResponseInputParam, tools: list[ChatCompletionToolParam]) -> EvaluationOutput:
         """Evaluate messages and tools, returning an EvaluationOutput."""
         ...
+
+## scripts/run_benchmarks.py
+
+# Copyright (c) Microsoft. All rights reserved
+
+import asyncio
+import os
+from pathlib import Path
+
+import click
+from dotenv import load_dotenv
+from rich.console import Console
+from rich.panel import Panel
+
+from eval_recipes.benchmarking.harness import Harness
+
+load_dotenv()
+
+
+@click.command()
+@click.option(
+    "--agents-dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=lambda: Path(__file__).parents[1] / "data" / "agents",
+    help="Directory containing agent configurations",
+)
+@click.option(
+    "--tasks-dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=lambda: Path(__file__).parents[1] / "data" / "tasks",
+    help="Directory containing task definitions",
+)
+@click.option(
+    "--runs-dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=lambda: Path(__file__).parents[1] / "data" / "benchmarking" / "runs",
+    help="Directory to store benchmark run results",
+)
+@click.option(
+    "--agent-filter",
+    "agent_filters",
+    multiple=True,
+    default=(),
+    help="Filter agents by field. Format: field=value or field=value1,value2. "
+    "Can specify multiple times (AND logic). Examples: name=claude_code",
+)
+@click.option(
+    "--task-filter",
+    "task_filters",
+    multiple=True,
+    default=None,
+    help="Filter tasks by field. Format: field=value or field.nested=value1,value2. "
+    "Can specify multiple times (AND logic). Examples: difficulty=medium, "
+    "name=email_drafting,arxiv_conclusion_extraction, task_info.non_deterministic_evals=true. ",
+)
+@click.option(
+    "--generate-reports",
+    is_flag=True,
+    default=True,
+    help="Generate failure reports for each task, a consolidated summary report, and an HTML report",
+)
+@click.option(
+    "--max-parallel-tasks",
+    type=int,
+    default=5,
+    help="Maximum number of tasks to run in parallel",
+)
+def main(
+    agents_dir: Path,
+    tasks_dir: Path,
+    runs_dir: Path,
+    agent_filters: tuple[str, ...],
+    task_filters: tuple[str, ...],
+    generate_reports: bool,
+    max_parallel_tasks: int,
+) -> None:
+    """Run benchmarks for LLM agents."""
+    harness = Harness(
+        agents_dir=agents_dir,
+        tasks_dir=tasks_dir,
+        runs_dir=runs_dir,
+        environment={
+            "ANTHROPIC_API_KEY": os.environ["ANTHROPIC_API_KEY"],
+            "OPENAI_API_KEY": os.environ["OPENAI_API_KEY"],
+        },
+        agent_filters=list(agent_filters) if agent_filters else None,
+        task_filters=list(task_filters) if task_filters else None,
+        max_parallel_tasks=max_parallel_tasks,
+    )
+    asyncio.run(harness.run(generate_reports=generate_reports))
+
+    console = Console()
+    console.print()
+    console.print(
+        Panel(
+            "Any of the files generated in the benchmarking run may contain secrets that were used during the evaluation run. "
+            "[bold red]NEVER[/bold red] commit these files to source control without first checking for exposed secrets.",
+            title="[yellow]⚠ Security Warning[/yellow]",
+            border_style="yellow",
+        )
+    )
+
+
+if __name__ == "__main__":
+    main()
