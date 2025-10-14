@@ -2,10 +2,12 @@
 
 """Generate an interactive HTML dashboard for benchmark evaluation runs."""
 
+from collections import defaultdict
 from dataclasses import dataclass
 from html import escape
 import json
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -18,9 +20,8 @@ class TaskResult:
     agent_name: str
     score: float
     instructions: str
-    difficulty: str
-    non_deterministic_evals: bool
     metadata: dict
+    task_yaml_data: dict
     failure_report: str | None
 
 
@@ -44,11 +45,10 @@ def _load_task_results(benchmarks_output_dir: Path, tasks_directory: Path) -> li
 
         # Parse directory name to get agent and task
         dir_name = run_dir.name
-        # Find the task name by checking which task directory exists
         agent_name = None
         task_name = None
-
         task_dir_path = None
+
         for task_dir in tasks_directory.iterdir():
             if not task_dir.is_dir():
                 continue
@@ -74,16 +74,12 @@ def _load_task_results(benchmarks_output_dir: Path, tasks_directory: Path) -> li
         metadata = test_data.get("metadata", {})
         instructions = metadata.get("instructions", "No instructions available")
 
-        # Load task.yaml to get difficulty and non_deterministic_evals
+        # Load task.yaml to get all task configuration
+        task_yaml_data = {}
         task_yaml_path = task_dir_path / "task.yaml"
-        difficulty = "unknown"
-        non_deterministic_evals = False
         if task_yaml_path.exists():
             with task_yaml_path.open() as f:
-                task_config = yaml.safe_load(f)
-                task_info = task_config.get("task_info", {})
-                difficulty = task_info.get("difficulty", "unknown")
-                non_deterministic_evals = task_info.get("non_deterministic_evals", False)
+                task_yaml_data = yaml.safe_load(f) or {}
 
         # Load failure report if it exists and score is not 100%
         failure_report = None
@@ -98,9 +94,8 @@ def _load_task_results(benchmarks_output_dir: Path, tasks_directory: Path) -> li
                 agent_name=agent_name,
                 score=score,
                 instructions=instructions,
-                difficulty=difficulty,
-                non_deterministic_evals=non_deterministic_evals,
                 metadata=metadata,
+                task_yaml_data=task_yaml_data,
                 failure_report=failure_report,
             )
         )
@@ -108,42 +103,129 @@ def _load_task_results(benchmarks_output_dir: Path, tasks_directory: Path) -> li
     return results
 
 
+def _extract_categorical_dimensions(results: list[TaskResult]) -> dict[str, set[str]]:
+    """
+    Extract all categorical dimensions from task_yaml_data.
+
+    This makes the report flexible to future task.yaml schema changes.
+
+    Args:
+        results: List of TaskResult objects
+
+    Returns:
+        Dictionary mapping dimension name to set of possible values
+    """
+    dimensions: dict[str, set[str]] = defaultdict(set)
+
+    for result in results:
+        task_info = result.task_yaml_data.get("task_info", {})
+        for key, value in task_info.items():
+            # Only include string and boolean fields (categorical data)
+            if isinstance(value, (str, bool)):
+                dimensions[key].add(str(value))
+
+    return dict(dimensions)
+
+
+def _calculate_metrics_by_dimension(results: list[TaskResult], dimension: str) -> dict[str, dict[str, float | int]]:
+    """
+    Calculate metrics grouped by a specific dimension from task_info.
+
+    Args:
+        results: List of TaskResult objects
+        dimension: The dimension key from task_info (e.g., "difficulty", "non_deterministic_evals")
+
+    Returns:
+        Dictionary mapping dimension values to metrics (avg, count, perfect)
+    """
+
+    metrics: dict[str, dict[str, Any]] = {}
+
+    for result in results:
+        task_info = result.task_yaml_data.get("task_info", {})
+        value = str(task_info.get(dimension, "unknown"))
+
+        if value not in metrics:
+            metrics[value] = {"scores": [], "count": 0, "perfect": 0}
+
+        metrics[value]["scores"].append(result.score)
+        metrics[value]["count"] += 1
+        if result.score == 100.0:
+            metrics[value]["perfect"] += 1
+
+    # Calculate averages and remove scores list
+    final_metrics: dict[str, dict[str, float | int]] = {}
+    for value, value_metrics in metrics.items():
+        scores: list[float] = value_metrics["scores"]
+        avg_score = sum(scores) / len(scores) if scores else 0.0
+        final_metrics[value] = {
+            "avg": avg_score,
+            "count": value_metrics["count"],
+            "perfect": value_metrics["perfect"],
+        }
+
+    return final_metrics
+
+
+def _group_results_by_agent(results: list[TaskResult]) -> dict[str, list[TaskResult]]:
+    """Group results by agent name."""
+    grouped: dict[str, list[TaskResult]] = defaultdict(list)
+    for result in results:
+        grouped[result.agent_name].append(result)
+    return dict(grouped)
+
+
+def _format_name(name: str) -> str:
+    """
+    Format a snake_case name for display.
+    """
+    # Split on underscores and capitalize each word
+    words = name.split("_")
+    formatted_words = []
+    for word in words:
+        word_lower = word.lower()
+        # Special case for common acronyms and company names
+        if word_lower == "openai":
+            formatted_words.append("OpenAI")
+        elif word_lower == "arxiv":
+            formatted_words.append("ArXiv")
+        elif word_lower == "gdpval":
+            formatted_words.append("GDPVal")
+        elif word_lower in ("api", "llm", "ai", "gpt", "csv", "json", "yaml", "html", "pdf", "cli", "url"):
+            formatted_words.append(word.upper())
+        else:
+            formatted_words.append(word.capitalize())
+    return " ".join(formatted_words)
+
+
+def _format_agent_name(agent_name: str) -> str:
+    """
+    Format agent name for display.
+
+    Wrapper around _format_name for backwards compatibility.
+    """
+    return _format_name(agent_name)
+
+
 def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> str:
     """Generate HTML report from task results."""
-    # Load consolidated report if it exists
-    consolidated_report_path = benchmarks_output_dir / "CONSOLIDATED_REPORT.md"
-    consolidated_report = None
-    if consolidated_report_path.exists():
-        consolidated_report = consolidated_report_path.read_text()
+    # Load all consolidated reports (one per agent)
+    consolidated_reports: dict[str, str] = {}
+    for report_path in benchmarks_output_dir.glob("CONSOLIDATED_REPORT_*.md"):
+        agent_name = report_path.stem.replace("CONSOLIDATED_REPORT_", "")
+        consolidated_reports[agent_name] = report_path.read_text()
 
-    # Calculate summary statistics
-    total_tasks = len(results)
-    perfect_tasks = sum(1 for r in results if r.score == 100.0)
-    avg_score = sum(r.score for r in results) / total_tasks if total_tasks > 0 else 0.0
+    # Group results by agent
+    agent_results = _group_results_by_agent(results)
 
-    # Calculate stats by difficulty
-    difficulty_stats = {}
-    for result in results:
-        if result.difficulty not in difficulty_stats:
-            difficulty_stats[result.difficulty] = {"scores": [], "count": 0, "perfect": 0}
-        difficulty_stats[result.difficulty]["scores"].append(result.score)
-        difficulty_stats[result.difficulty]["count"] += 1
-        if result.score == 100.0:
-            difficulty_stats[result.difficulty]["perfect"] += 1
+    # Extract categorical dimensions (flexible for future task.yaml changes)
+    all_dimensions = _extract_categorical_dimensions(results)
 
-    for diff in difficulty_stats:
-        scores = difficulty_stats[diff]["scores"]
-        difficulty_stats[diff]["avg"] = sum(scores) / len(scores) if scores else 0.0
+    # Get timestamp from directory name
+    timestamp = benchmarks_output_dir.name
 
-    # Calculate stats by determinism
-    deterministic_scores = [r.score for r in results if not r.non_deterministic_evals]
-    non_deterministic_scores = [r.score for r in results if r.non_deterministic_evals]
-
-    det_avg = sum(deterministic_scores) / len(deterministic_scores) if deterministic_scores else 0.0
-    non_det_avg = sum(non_deterministic_scores) / len(non_deterministic_scores) if non_deterministic_scores else 0.0
-
-    # Sort results by score (ascending) then by task name
-    sorted_results = sorted(results, key=lambda r: (r.score, r.task_name))
+    # Collect all markdown content to render after page load
+    markdown_content: dict[str, str] = {}
 
     # Generate HTML
     html_parts = [
@@ -152,8 +234,8 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Benchmark Report</title>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <title>Agent Benchmark Run Results</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js" defer></script>
     <style>
         :root {
             --primary: #2563eb;
@@ -181,7 +263,7 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
         }
 
@@ -198,119 +280,210 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
             font-size: 0.9rem;
         }
 
-        .summary-inline {
+        /* Tab Styles */
+        .tabs {
             display: flex;
-            align-items: center;
-            gap: 2rem;
-            padding: 0.75rem 0;
-            margin-bottom: 1rem;
-            flex-wrap: wrap;
+            gap: 0.5rem;
+            border-bottom: 2px solid var(--border);
+            margin-bottom: 2rem;
         }
 
-        .summary-stat {
+        .tab {
+            padding: 0.75rem 1.5rem;
+            background: transparent;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            color: var(--text);
+            background: var(--surface);
+        }
+
+        .tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Summary Stats */
+        .overall-score {
+            font-size: 3rem;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 0.5rem;
+        }
+
+        .task-count {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            margin-bottom: 2rem;
+        }
+
+        /* Metrics Section */
+        .metrics-section {
+            margin-bottom: 2rem;
+        }
+
+        .metrics-section h2 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: var(--text);
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .metric-card {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+        }
+
+        .metric-card h3 {
+            margin: 0 0 0.75rem 0;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+        }
+
+        .metric-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .metric-item:last-child {
+            border-bottom: none;
+        }
+
+        .metric-label {
+            font-weight: 500;
+        }
+
+        .metric-value {
             display: flex;
             align-items: baseline;
             gap: 0.5rem;
         }
 
-        .summary-stat .label {
-            font-size: 0.85rem;
-            color: var(--text-muted);
-            font-weight: 500;
-        }
-
-        .summary-stat .value {
-            font-size: 1.75rem;
+        .metric-score {
+            font-size: 1.25rem;
             font-weight: 600;
             color: var(--text);
         }
 
-        .breakdown-table {
-            width: 100%;
-            border-collapse: collapse;
-            background: white;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            overflow: hidden;
-            font-size: 0.9rem;
-        }
-
-        .breakdown-table th {
-            background: var(--surface);
-            padding: 0.5rem 0.75rem;
-            text-align: left;
-            font-weight: 600;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.025em;
-            color: var(--text-muted);
-            border-bottom: 1px solid var(--border);
-        }
-
-        .breakdown-table td {
-            padding: 0.5rem 0.75rem;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .breakdown-table tbody tr:last-child td {
-            border-bottom: none;
-        }
-
-        .breakdown-table tbody tr:hover {
-            background: var(--surface);
-        }
-
-        .breakdown-table .score-col {
-            font-weight: 600;
-            font-size: 1.1rem;
-        }
-
-        .breakdown-table .secondary-col {
-            color: var(--text-muted);
+        .metric-count {
             font-size: 0.85rem;
+            color: var(--text-muted);
         }
 
-        .task-list {
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            overflow: hidden;
-        }
-
-        .task-item {
-            border-bottom: 1px solid var(--border);
-            background: white;
-        }
-
-        .task-item:last-child {
-            border-bottom: none;
-        }
-
-        .task-header {
-            padding: 1rem 1.5rem;
+        /* Collapsible Sections */
+        .collapsible-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            padding: 1rem 1.5rem;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 0.5rem;
+            transition: background 0.2s;
+        }
+
+        .collapsible-header:hover {
+            background: var(--surface);
+        }
+
+        .collapsible-header h3 {
+            margin: 0;
+            font-size: 1.1rem;
+            color: var(--text);
+        }
+
+        .collapsible-icon {
+            color: var(--text-muted);
+            transition: transform 0.2s;
+            font-size: 1.2rem;
+        }
+
+        .collapsible-header.expanded .collapsible-icon {
+            transform: rotate(90deg);
+        }
+
+        .collapsible-content {
+            display: none;
+            margin-bottom: 1.5rem;
+            padding: 1.5rem;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            border-top-left-radius: 0;
+            border-top-right-radius: 0;
+            margin-top: -0.5rem;
+        }
+
+        .collapsible-content.open {
+            display: block;
+        }
+
+        /* Task List */
+        .task-list {
+            margin-top: 2rem;
+        }
+
+        .task-list h2 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .task-item {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            overflow: hidden;
+        }
+
+        .task-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.5rem;
             cursor: pointer;
             transition: background 0.2s;
         }
 
-        .task-header:hover {
+        .task-item-header:hover {
             background: var(--surface);
-        }
-
-        .task-info {
-            flex: 1;
         }
 
         .task-name {
             font-weight: 600;
             font-size: 1.1rem;
-            margin-bottom: 0.25rem;
-        }
-
-        .task-agent {
-            color: var(--text-muted);
-            font-size: 0.9rem;
+            color: var(--text);
         }
 
         .task-score {
@@ -339,7 +512,7 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
 
         .task-details {
             display: none;
-            padding: 0 1.5rem 1.5rem 1.5rem;
+            padding: 1rem 1.5rem;
             border-top: 1px solid var(--border);
             background: var(--surface);
         }
@@ -348,23 +521,57 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
             display: block;
         }
 
-        .details-section {
-            margin-top: 1rem;
+        .task-detail-section {
+            margin-bottom: 1rem;
         }
 
-        .details-section h4 {
-            margin: 0 0 0.5rem 0;
-            font-size: 0.9rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
+        .task-detail-section:last-child {
+            margin-bottom: 0;
         }
 
-        .markdown-content {
+        /* Nested Collapsible */
+        .nested-collapsible-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 1rem;
             background: white;
-            padding: 1rem;
-            border-radius: 4px;
             border: 1px solid var(--border);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-bottom: 0.25rem;
+        }
+
+        .nested-collapsible-header:hover {
+            background: var(--surface);
+        }
+
+        .nested-collapsible-header h4 {
+            margin: 0;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .nested-collapsible-content {
+            display: none;
+            padding: 1rem;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            border-top-left-radius: 0;
+            border-top-right-radius: 0;
+            margin-top: -0.25rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .nested-collapsible-content.open {
+            display: block;
+        }
+
+        /* Markdown Content */
+        .markdown-content {
             max-height: 400px;
             overflow-y: auto;
             font-size: 0.9rem;
@@ -430,298 +637,342 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
             background: var(--surface);
         }
 
-        .expand-icon {
-            margin-left: 1rem;
-            color: var(--text-muted);
-            transition: transform 0.2s;
-        }
-
-        .task-header.expanded .expand-icon {
-            transform: rotate(90deg);
+        /* JSON Content */
+        .json-content {
+            background: var(--surface);
+            padding: 1rem;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            max-height: 400px;
+            overflow-y: auto;
         }
 
         .no-report {
             color: var(--text-muted);
             font-style: italic;
-        }
-
-        .breakdown-header {
-            display: flex;
-            align-items: center;
-            cursor: pointer;
-            margin-top: 1.5rem;
-            margin-bottom: 0.75rem;
-            padding: 0.5rem 0;
-            user-select: none;
-        }
-
-        .breakdown-header:hover h2 {
-            color: var(--primary);
-        }
-
-        .breakdown-header h2 {
-            margin: 0;
-            font-size: 1.5rem;
-            transition: color 0.2s;
-        }
-
-        .breakdown-expand-icon {
-            margin-left: 0.5rem;
-            color: var(--text-muted);
-            transition: transform 0.2s;
-            font-size: 1.2rem;
-        }
-
-        .breakdown-header.expanded .breakdown-expand-icon {
-            transform: rotate(90deg);
-        }
-
-        .breakdown-content {
-            display: none;
-            overflow: hidden;
-        }
-
-        .breakdown-content.open {
-            display: block;
+            padding: 1rem;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Benchmark Report</h1>
-        <div class="subtitle">""",
-        escape(str(benchmarks_output_dir.name)),
+        <h1>Agent Benchmark Run Results</h1>
+        <div class="subtitle">Run: """,
+        escape(timestamp),
         """</div>
 
-        <div class="summary-inline">
-            <div class="summary-stat">
-                <span class="label">Total Tasks:</span>
-                <span class="value">""",
-        str(total_tasks),
-        """</span>
-            </div>
-            <div class="summary-stat">
-                <span class="label">Perfect Scores:</span>
-                <span class="value">""",
-        str(perfect_tasks),
-        """</span>
-            </div>
-            <div class="summary-stat">
-                <span class="label">Average Score:</span>
-                <span class="value">""",
-        f"{avg_score:.1f}%",
-        """</span>
-            </div>
-        </div>
-
-        <div class="breakdown-header" onclick="toggleBreakdown(this)">
-            <h2>Score Breakdown</h2>
-            <span class="breakdown-expand-icon">▶</span>
-        </div>
-
-        <div class="breakdown-content">
-            <table class="breakdown-table">
-                <thead>
-                    <tr>
-                        <th>Category</th>
-                        <th>Avg Score</th>
-                        <th>Perfect / Total</th>
-                    </tr>
-                </thead>
-                <tbody>""",
+        <div class="tabs">""",
     ]
 
-    # Add difficulty rows
-    for difficulty in sorted(difficulty_stats.keys()):
-        stats = difficulty_stats[difficulty]
+    # Generate tabs for each agent
+    for idx, agent_name in enumerate(sorted(agent_results.keys())):
+        active_class = "active" if idx == 0 else ""
+        formatted_agent_name = _format_agent_name(agent_name)
         html_parts.extend(
             [
                 """
-                    <tr>
-                        <td>""",
-                escape(difficulty.title()),
-                """</td>
-                        <td class="score-col">""",
-                f"{stats['avg']:.1f}%",
-                """</td>
-                        <td class="secondary-col">""",
-                f"{stats['perfect']} / {stats['count']}",
-                """</td>
-                    </tr>""",
+            <button class="tab """,
+                active_class,
+                """" onclick="switchTab(event, '""",
+                escape(agent_name),
+                """')">""",
+                escape(formatted_agent_name),
+                """</button>""",
             ]
         )
 
-    # Add deterministic/non-deterministic rows
-    html_parts.extend(
-        [
-            """
-                    <tr>
-                        <td>Deterministic</td>
-                        <td class="score-col">""",
-            f"{det_avg:.1f}%",
-            """</td>
-                        <td class="secondary-col">""",
-            f"{len(deterministic_scores)} tasks",
-            """</td>
-                    </tr>
-                    <tr>
-                        <td>Non-Deterministic</td>
-                        <td class="score-col">""",
-            f"{non_det_avg:.1f}%",
-            """</td>
-                        <td class="secondary-col">""",
-            f"{len(non_deterministic_scores)} tasks",
-            """</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>""",
-        ]
-    )
+    html_parts.append("""
+        </div>""")
 
-    # Add consolidated report section if it exists
-    if consolidated_report:
-        html_parts.extend(
-            [
-                """
+    # Generate content for each agent
+    for idx, (agent_name, agent_tasks) in enumerate(sorted(agent_results.items())):
+        active_class = "active" if idx == 0 else ""
+        agent_id = escape(agent_name)
 
-        <div class="breakdown-header" onclick="toggleBreakdown(this)">
-            <h2>Consolidated Failure Analysis</h2>
-            <span class="breakdown-expand-icon">▶</span>
-        </div>
-
-        <div class="breakdown-content">
-            <div id="consolidated-report" class="markdown-content tall"></div>
-        </div>
-        <script>
-            document.getElementById('consolidated-report').innerHTML = marked.parse(""",
-                json.dumps(consolidated_report),
-                """);
-        </script>""",
-            ]
-        )
-
-    html_parts.extend(
-        [
-            """
-
-        <h2 style="margin-top: 1.5rem; margin-bottom: 0.75rem; font-size: 1.5rem;">All Tasks</h2>
-        <div class="task-list">""",
-        ]
-    )
-
-    html_parts.append("")  # Empty addition to match the list structure
-    html_parts = html_parts[:-1]  # Remove the empty one we just added
-
-    # Generate task items
-    for idx, result in enumerate(sorted_results):
-        score_class = (
-            "score-perfect" if result.score == 100.0 else "score-good" if result.score >= 50.0 else "score-poor"
-        )
-        task_id = f"task-{idx}"
+        # Calculate overall stats
+        total_tasks = len(agent_tasks)
+        avg_score = sum(t.score for t in agent_tasks) / total_tasks if total_tasks > 0 else 0.0
 
         html_parts.extend(
             [
                 """
-            <div class="task-item">
-                <div class="task-header" onclick="toggleTask(this, '""",
-                task_id,
-                """')">
-                    <div class="task-info">
-                        <div class="task-name">""",
-                escape(result.task_name),
+        <div class="tab-content """,
+                active_class,
+                """" id="tab-""",
+                agent_id,
+                """">
+            <div class="overall-score">""",
+                f"{avg_score:.1f}%",
                 """</div>
-                        <div class="task-agent">Agent: """,
-                escape(result.agent_name),
-                """</div>
-                    </div>
-                    <div class="task-score """,
-                score_class,
-                """">""",
-                f"{result.score:.1f}%",
-                """</div>
-                    <span class="expand-icon">▶</span>
-                </div>""",
+            <div class="task-count">Average score across """,
+                str(total_tasks),
+                """ task(s)</div>
+
+            <div class="metrics-section">
+                <h2>Metrics Breakdown</h2>
+                <div class="metrics-grid">""",
             ]
         )
 
-        # Add details section for all tasks
-        html_parts.extend(
-            [
-                """
-                <div class="task-details">
-                    <div class="details-section">
-                        <h4>Task Instructions</h4>
-                        <div id="instructions-""",
-                task_id,
-                """" class="markdown-content"></div>
-                    </div>
-                    <script>
-                        document.getElementById('instructions-""",
-                task_id,
-                """').innerHTML = marked.parse(""",
-                json.dumps(result.instructions),
-                """);
-                    </script>""",
-            ]
-        )
+        # Generate metric cards for each dimension
+        for dimension in sorted(all_dimensions.keys()):
+            metrics = _calculate_metrics_by_dimension(agent_tasks, dimension)
 
-        # Add failure report section only for failed tasks
-        if result.score < 100.0:
-            if result.failure_report:
+            # Format dimension name for display
+            dimension_display = dimension.replace("_", " ").title()
+
+            html_parts.extend(
+                [
+                    """
+                    <div class="metric-card">
+                        <h3>By """,
+                    dimension_display,
+                    """</h3>""",
+                ]
+            )
+
+            for value in sorted(metrics.keys()):
+                value_metrics = metrics[value]
                 html_parts.extend(
                     [
                         """
-                    <div class="details-section">
-                        <h4>Failure Analysis</h4>
-                        <div id="report-""",
-                        task_id,
-                        """" class="markdown-content tall"></div>
-                    </div>
-                    <script>
-                        document.getElementById('report-""",
-                        task_id,
-                        """').innerHTML = marked.parse(""",
-                        json.dumps(result.failure_report),
-                        """);
-                    </script>""",
+                        <div class="metric-item">
+                            <span class="metric-label">""",
+                        escape(value.title()),
+                        """</span>
+                            <div class="metric-value">
+                                <span class="metric-score">""",
+                        f"{value_metrics['avg']:.1f}%",  # type: ignore[index]
+                        """</span>
+                                <span class="metric-count">(""",
+                        str(value_metrics["count"]),  # type: ignore[index]
+                        """ tasks)</span>
+                            </div>
+                        </div>""",
                     ]
                 )
-            else:
-                html_parts.append("""
-                    <div class="details-section">
-                        <p class="no-report">No failure report available</p>
+
+            html_parts.append("""
                     </div>""")
 
         html_parts.append("""
                 </div>
             </div>""")
 
-    html_parts.append(
-        """
-        </div>
+        # Add consolidated report if it exists
+        if agent_name in consolidated_reports:
+            consolidated_id = f"consolidated-{agent_id}"
+            report_content = consolidated_reports[agent_name]
+            markdown_content[consolidated_id] = report_content
+            html_parts.extend(
+                [
+                    """
+
+            <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                <h3>High Level Failure Analysis</h3>
+                <span class="collapsible-icon">▶</span>
+            </div>
+            <div class="collapsible-content">
+                <div id='""",
+                    consolidated_id,
+                    """' class="markdown-content tall"></div>
+            </div>""",
+                ]
+            )
+
+        # Add individual task reports
+        html_parts.append("""
+
+            <div class="task-list">
+                <h2>Individual Task Reports</h2>""")
+
+        # Sort tasks by score (ascending)
+        sorted_tasks = sorted(agent_tasks, key=lambda t: t.score)
+
+        for task_idx, task in enumerate(sorted_tasks):
+            task_id = f"{agent_id}-task-{task_idx}"
+            score_class = (
+                "score-perfect" if task.score == 100.0 else "score-good" if task.score >= 50.0 else "score-poor"
+            )
+
+            formatted_task_name = _format_name(task.task_name)
+            html_parts.extend(
+                [
+                    """
+                <div class="task-item">
+                    <div class="task-item-header" onclick="toggleTaskDetails(this)">
+                        <div class="task-name">""",
+                    escape(formatted_task_name),
+                    """</div>
+                        <div class="task-score """,
+                    score_class,
+                    """">""",
+                    f"{task.score:.1f}%",
+                    """</div>
+                    </div>
+                    <div class="task-details">
+                        <div class="task-detail-section">""",
+                ]
+            )
+
+            # Task instructions (nested collapsible)
+            instructions_id = f"instructions-{task_id}"
+            markdown_content[instructions_id] = task.instructions
+            html_parts.extend(
+                [
+                    """
+                            <div class="nested-collapsible-header" onclick="toggleNestedCollapsible(this)">
+                                <h4>Task Instructions</h4>
+                                <span class="collapsible-icon">▶</span>
+                            </div>
+                            <div class="nested-collapsible-content">
+                                <div id='""",
+                    instructions_id,
+                    """' class="markdown-content"></div>
+                            </div>""",
+                ]
+            )
+
+            # Test output (nested collapsible)
+            metadata_json = json.dumps(task.metadata, indent=2)
+            html_parts.extend(
+                [
+                    """
+                        </div>
+                        <div class="task-detail-section">
+                            <div class="nested-collapsible-header" onclick="toggleNestedCollapsible(this)">
+                                <h4>Test Output</h4>
+                                <span class="collapsible-icon">▶</span>
+                            </div>
+                            <div class="nested-collapsible-content">
+                                <pre class="json-content">""",
+                    escape(metadata_json),
+                    """</pre>
+                            </div>
+                        </div>""",
+                ]
+            )
+
+            # Failure report (nested collapsible, only if exists)
+            if task.failure_report:
+                failure_id = f"failure-{task_id}"
+                markdown_content[failure_id] = task.failure_report
+                html_parts.extend(
+                    [
+                        """
+                        <div class="task-detail-section">
+                            <div class="nested-collapsible-header" onclick="toggleNestedCollapsible(this)">
+                                <h4>Failure Analysis</h4>
+                                <span class="collapsible-icon">▶</span>
+                            </div>
+                            <div class="nested-collapsible-content">
+                                <div id='""",
+                        failure_id,
+                        """' class="markdown-content tall"></div>
+                            </div>
+                        </div>""",
+                    ]
+                )
+
+            html_parts.append("""
+                    </div>
+                </div>""")
+
+        html_parts.append("""
+            </div>
+        </div>""")
+
+    # Serialize markdown content for JavaScript
+    markdown_content_json = json.dumps(markdown_content)
+
+    # Add JavaScript section
+    javascript_section = f"""
     </div>
 
     <script>
-        function toggleTask(header, taskId) {
-            header.classList.toggle('expanded');
-            const details = header.nextElementSibling;
-            if (details) {
-                details.classList.toggle('open');
-            }
-        }
+        function switchTab(event, agentName) {{
+            // Hide all tab contents
+            const tabContents = document.querySelectorAll('.tab-content');
+            tabContents.forEach(content => {{
+                content.classList.remove('active');
+            }});
 
-        function toggleBreakdown(header) {
+            // Remove active class from all tabs
+            const tabs = document.querySelectorAll('.tab');
+            tabs.forEach(tab => {{
+                tab.classList.remove('active');
+            }});
+
+            // Show selected tab content
+            document.getElementById('tab-' + agentName).classList.add('active');
+
+            // Add active class to clicked tab
+            event.currentTarget.classList.add('active');
+        }}
+
+        function toggleCollapsible(header) {{
             header.classList.toggle('expanded');
             const content = header.nextElementSibling;
-            if (content) {
+            if (content) {{
                 content.classList.toggle('open');
-            }
-        }
+            }}
+        }}
+
+        function toggleTaskDetails(header) {{
+            const details = header.nextElementSibling;
+            if (details) {{
+                details.classList.toggle('open');
+            }}
+        }}
+
+        function toggleNestedCollapsible(header) {{
+            header.classList.toggle('expanded');
+            const content = header.nextElementSibling;
+            if (content) {{
+                content.classList.toggle('open');
+            }}
+        }}
+
+        // Render all markdown content after page loads
+        window.addEventListener('load', function() {{
+            const markdownContent = {markdown_content_json};
+
+            console.log('Rendering', Object.keys(markdownContent).length, 'markdown sections...');
+
+            let successCount = 0;
+            let failCount = 0;
+
+            for (const [elementId, content] of Object.entries(markdownContent)) {{
+                const elem = document.getElementById(elementId);
+                if (elem) {{
+                    try {{
+                        if (typeof marked !== 'undefined' && marked.parse) {{
+                            elem.innerHTML = marked.parse(content);
+                            successCount++;
+                        }} else {{
+                            console.error('marked library not available');
+                            elem.innerHTML = '<p class="no-report">Error: Markdown renderer not loaded</p>';
+                            failCount++;
+                        }}
+                    }} catch (error) {{
+                        console.error('Failed to render markdown for', elementId, ':', error);
+                        elem.innerHTML = '<p class="no-report">Error rendering content</p>';
+                        failCount++;
+                    }}
+                }} else {{
+                    console.warn('Element not found:', elementId);
+                    failCount++;
+                }}
+            }}
+
+            console.log('Markdown rendering complete:', successCount, 'succeeded,', failCount, 'failed');
+        }});
     </script>
 </body>
 </html>"""
-    )
+    html_parts.append(javascript_section)
 
     return "".join(html_parts)
 

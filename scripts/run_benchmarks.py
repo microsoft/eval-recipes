@@ -45,7 +45,7 @@ load_dotenv()
     "--task-filter",
     "task_filters",
     multiple=True,
-    default=None,
+    default=(),
     help="Filter tasks by field. Format: field=value or field.nested=value1,value2. "
     "Can specify multiple times (AND logic). Examples: difficulty=medium, "
     "name=email_drafting,arxiv_conclusion_extraction, task_info.non_deterministic_evals=true. ",

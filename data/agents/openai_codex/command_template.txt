@@ -1,0 +1,1 @@
+printenv OPENAI_API_KEY | codex login --with-api-key && codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox "{{task_instructions}}"

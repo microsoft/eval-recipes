@@ -1,0 +1,74 @@
+Create a tool called "Style Blender" that blends writing styles from multiple authors to create unique voice profiles. The tool should analyze writing samples from 2+ authors, extract their individual style characteristics, then intelligently blend them to create a new, harmonious writing voice. Place all the code under the directory scenarios/style_blender.
+
+Key Requirements:
+
+1. Input Handling:
+   - Accept text files (.md and .txt) from multiple authors
+   - Support individual files OR directories of samples (each file or directory = one writer)
+   - Minimum of 2 authors required to blend styles
+   - For each writer, read up to 5 files with approximately 3,000 characters each (~15K total per writer)
+
+2. 3-Stage Pipeline Architecture:
+
+   Stage 1: Style Analysis
+   - For each writer separately, extract their writing style characteristics including:
+     * Tone and voice
+     * Vocabulary choices
+     * Sentence structure patterns
+     * Common phrases and patterns
+     * Paragraph organization
+   - Create a StyleProfile for each writer
+   - Save individual profiles to JSON files for diagnostics
+
+   Stage 2: Style Blending
+   - Intelligently combine the individual style profiles (not just averaging)
+   - Synthesize tone and voice elements
+   - Blend structural patterns (paragraph length, sentence structure, etc.)
+   - Create an attribution map showing each writer's contributions
+   - Produce a BlendedStyleProfile
+   - Save blended profile and the blending prompt used to disk
+
+   Stage 3: Content Generation
+   - Generate 3-5 sample blog posts (300-500 words each) in the blended style
+   - Use different topic categories for variety
+   - Apply the blended style naturally to the generated content
+   - Save generation prompts for diagnostics
+
+3. Output Organization:
+   - Create a timestamped output directory (e.g., `.data/style_blender/TIMESTAMP/`)
+   - Save all diagnostic files to the root of the output directory:
+     * Individual writer profiles (writer_*.json)
+     * Blended profile (blended_profile.json)
+     * All prompts used (prompt_*.txt)
+     * Index file (index.md) with overview and links
+   - Create a clean `output/` subdirectory containing only the generated sample writings
+   - The output/ subdirectory should be ready to use with other tools without clutter
+
+4. CLI Interface:
+   - Use Click for the CLI
+   - Support specifying input files/directories
+   - Support configuring number of samples to generate (default 3)
+   - Allow custom output directory specification
+   - Include verbose mode for detailed logging
+
+5. Technical Requirements:
+   - Use Python with proper type hints
+   - Use the ANTHROPIC_API_KEY environment variable for API access
+   - Implement proper error handling and validation
+   - Fail fast if less than 2 writers are provided
+   - Fail fast if API key is missing
+   - Use async/await for AI interactions
+   - Follow the project's style guide (pathlib, type hints, etc.)
+
+6. Documentation:
+   - Create a README.md under scenarios/style_blender/ that includes:
+     * Overview of what the tool does and the problem it solves
+     * Feature list
+     * Quick start examples showing different input patterns
+     * Detailed usage instructions with examples
+     * Explanation of the 3-stage pipeline
+     * Description of output structure and files
+     * Troubleshooting section
+     * Integration examples
+
+The tool should make it easy for users who want to generate content in a unique voice that combines elements from writers they admire, without plagiarizing anyone's work directly.

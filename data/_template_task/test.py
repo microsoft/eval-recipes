@@ -137,5 +137,5 @@ if __name__ == "__main__":
 """
 Sample command(s):
 # Local debugging - with custom instructions file:
-uv run test_template.py --test-id dev --instructions-file my_instructions.txt --custom-input output.txt
+uv run test.py --test-id dev --instructions-file my_instructions.txt --custom-input output.txt
 """

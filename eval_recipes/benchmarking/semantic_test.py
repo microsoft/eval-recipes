@@ -28,7 +28,17 @@ Now take the following steps (make a todo list):
 {{steps}}
 
 Do not take any actions that are not related to figuring out how to complete the rubric based on the steps above. \
-You can take different steps if as you explore it becomes necessary, but you must be focused on the rubric provided."""
+You can take different steps if as you explore it becomes necessary, but you must be focused on the rubric provided.
+
+RULES:
+- You must **NEVER** under ANY circumstances change the code or files that were created by the agent. \
+You must use its code and outputs as is, changing its output is akin to a teacher changing a student's exam answers.
+- Your goal is NOT to troubleshoot or debug the agent's work, but to evaluate it as is. \
+If it is not working after following the steps and instructions that the agent may have created. Move on, and evaluate it as is. \
+- You should not need to install any additionally packages, software, or API keys. \
+If what you are testing does not work because of that it is a failure.
+- If the tool times out or does not complete in the time stated by either the instructions or the agent's own comments - that is a failure.\
+Do not keep trying to run or fix things."""
 
 
 GENERATE_RUBRIC_INSTRUCTIONS_PROMPT = """Now make a structured JSON report that addresses the following rubric:
