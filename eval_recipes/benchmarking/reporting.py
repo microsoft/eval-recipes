@@ -208,60 +208,139 @@ DO NOT add:
 {{all_reports}}"""
 
 
-async def generate_summary_report(benchmarks_output_dir: Path) -> None:
+def _extract_agent_name(run_dir_name: str, all_run_dirs: list[str]) -> str:
     """
-    Generate a consolidated report synthesizing all individual task failure reports.
+    Extract agent name from run directory name.
+
+    The directory format is {agent_name}_{task_name}, where both can contain underscores.
+    We find the agent name by identifying common prefixes across multiple directories.
 
     Args:
-        benchmarks_output_dir: Directory containing benchmark run outputs with FAILURE_REPORT.md files
+        run_dir_name: Name of the run directory (e.g., "claude_code_style_blender")
+        all_run_dirs: List of all run directory names for pattern matching
 
-    Creates:
-        CONSOLIDATED_REPORT.md in the benchmarks_output_dir with consolidated analysis
+    Returns:
+        The extracted agent name (e.g., "claude_code")
     """
-    # Collect all of the FAILURE_REPORT.md files from each task directory
-    failure_reports = []
+    parts = run_dir_name.split("_")
+
+    # Try progressively longer prefixes (1, 2, 3+ parts)
+    # Find the LONGEST prefix that appears in multiple directories
+    longest_agent_name = None
+    for i in range(1, len(parts)):
+        potential_agent = "_".join(parts[:i])
+
+        # Check if this prefix appears in at least one other directory
+        matching_count = sum(1 for d in all_run_dirs if d != run_dir_name and d.startswith(potential_agent + "_"))
+
+        if matching_count > 0:
+            # Found a common prefix, keep looking for a longer one
+            longest_agent_name = potential_agent
+        else:
+            # No more matches at this length, stop searching
+            break
+
+    # Return the longest matching prefix, or fallback to first part
+    return longest_agent_name if longest_agent_name else (parts[0] if parts else run_dir_name)
+
+
+def _group_reports_by_agent(benchmarks_output_dir: Path) -> dict[str, list[tuple[str, Path]]]:
+    """
+    Group failure reports by agent name.
+
+    Args:
+        benchmarks_output_dir: Directory containing benchmark run outputs
+
+    Returns:
+        Dictionary mapping agent name to list of (run_dir_name, report_path) tuples
+    """
+    # Get all run directories
+    all_run_dirs = [d.name for d in benchmarks_output_dir.iterdir() if d.is_dir()]
+
+    # Group reports by agent
+    agent_reports: dict[str, list[tuple[str, Path]]] = {}
+
     for run_dir in benchmarks_output_dir.iterdir():
         if not run_dir.is_dir():
             continue
 
         failure_report_path = run_dir / "FAILURE_REPORT.md"
-        if failure_report_path.exists():
-            task_name = run_dir.name
-            content = failure_report_path.read_text()
-            failure_reports.append(f"## Report for Task: {task_name}\n\n{content}\n\n{'=' * 80}\n")
+        if not failure_report_path.exists():
+            continue
 
-    if not failure_reports:
+        # Extract agent name from directory name
+        agent_name = _extract_agent_name(run_dir.name, all_run_dirs)
+
+        if agent_name not in agent_reports:
+            agent_reports[agent_name] = []
+
+        agent_reports[agent_name].append((run_dir.name, failure_report_path))
+
+    return agent_reports
+
+
+async def generate_summary_report(benchmarks_output_dir: Path) -> None:
+    """
+    Generate consolidated reports synthesizing individual task failure reports.
+
+    This function now creates a separate consolidated report for each agent found
+    in the benchmark run directory.
+
+    Args:
+        benchmarks_output_dir: Directory containing benchmark run outputs with FAILURE_REPORT.md files
+
+    Creates:
+        CONSOLIDATED_REPORT_{agent_name}.md files for each agent in benchmarks_output_dir
+    """
+    # Group failure reports by agent
+    agent_reports = _group_reports_by_agent(benchmarks_output_dir)
+
+    if not agent_reports:
         logger.warning("No failure reports found to consolidate")
         return
 
-    temp_dir = Path(tempfile.mkdtemp(prefix="benchmark_consolidated_report_"))
-    try:
-        all_reports = "\n".join(failure_reports)
-        consolidated_user_prompt = render(CONSOLIDATED_REPORT_USER_PROMPT, all_reports=all_reports)
-        options = ClaudeAgentOptions(
-            system_prompt=CONSOLIDATED_REPORT_SYSTEM_PROMPT,
-            cwd=str(temp_dir),
-            allowed_tools=["Write"],
-            max_turns=10,
-            permission_mode="default",
-        )
-        async with ClaudeSDKClient(options=options) as client:
-            await client.query(consolidated_user_prompt)
-            async for _ in client.receive_response():
-                continue
+    logger.info(f"Found {len(agent_reports)} agent(s) to generate consolidated reports for")
 
-        # Get the report from the temp dir and move it to the benchmark output dir
-        report_path = temp_dir / "CONSOLIDATED_REPORT.md"
-        if report_path.exists():
-            output_path = benchmarks_output_dir / "CONSOLIDATED_REPORT.md"
-            shutil.copy2(report_path, output_path)
-            logger.info(f"Consolidated report saved to: {output_path}")
-        else:
-            logger.warning("No consolidated report was generated. Check the logs for details.")
-            # Create a placeholder
-            output_path = benchmarks_output_dir / "CONSOLIDATED_REPORT.md"
-            output_path.write_text("# Consolidated Report\n\nNo report was generated. Check the logs for details.\n")
+    # Generate a consolidated report for each agent
+    for agent_name, reports in agent_reports.items():
+        logger.info(f"Generating consolidated report for agent '{agent_name}' ({len(reports)} task(s))")
 
-    finally:
-        if temp_dir.exists():
-            shutil.rmtree(temp_dir)
+        # Collect all failure reports for this agent
+        failure_reports = []
+        for run_dir_name, report_path in reports:
+            content = report_path.read_text()
+            failure_reports.append(f"## Report for Task: {run_dir_name}\n\n{content}\n\n{'=' * 80}\n")
+
+        temp_dir = Path(tempfile.mkdtemp(prefix=f"benchmark_consolidated_report_{agent_name}_"))
+        try:
+            all_reports = "\n".join(failure_reports)
+            consolidated_user_prompt = render(CONSOLIDATED_REPORT_USER_PROMPT, all_reports=all_reports)
+            options = ClaudeAgentOptions(
+                system_prompt=CONSOLIDATED_REPORT_SYSTEM_PROMPT,
+                cwd=str(temp_dir),
+                allowed_tools=["Write"],
+                max_turns=10,
+                permission_mode="default",
+            )
+            async with ClaudeSDKClient(options=options) as client:
+                await client.query(consolidated_user_prompt)
+                async for _ in client.receive_response():
+                    continue
+
+            # Get the report from the temp dir and move it to the benchmark output dir
+            report_path = temp_dir / "CONSOLIDATED_REPORT.md"
+            if report_path.exists():
+                output_path = benchmarks_output_dir / f"CONSOLIDATED_REPORT_{agent_name}.md"
+                shutil.copy2(report_path, output_path)
+                logger.info(f"Consolidated report for '{agent_name}' saved to: {output_path}")
+            else:
+                logger.warning(f"No consolidated report was generated for agent '{agent_name}'. Check the logs.")
+                # Create a placeholder
+                output_path = benchmarks_output_dir / f"CONSOLIDATED_REPORT_{agent_name}.md"
+                output_path.write_text(
+                    f"# Consolidated Report for {agent_name}\n\nNo report was generated. Check the logs for details.\n"
+                )
+
+        finally:
+            if temp_dir.exists():
+                shutil.rmtree(temp_dir)

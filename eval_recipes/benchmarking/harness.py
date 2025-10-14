@@ -346,8 +346,10 @@ class Harness:
             logger.info(f"Container {docker_manager.container_id} started")
 
             # Create command to run agent
+            # Escape task instructions to prevent bash injection and parsing errors
+            escaped_instructions = escape_bash_string(task.instructions)
             command_template = Template(agent.command_template)
-            command = command_template.render(task_instructions=task.instructions)
+            command = command_template.render(task_instructions=escaped_instructions)
             logger.info(f"Executing command: {command}")
 
             _exec_result, _exec_logs = docker_manager.exec_command(
@@ -504,3 +506,14 @@ class Harness:
                     logger.error(f"Failed to generate HTML report: {e}")
 
                 progress.update(report_progress_id, description="[green]✓[/green] All reports completed")
+
+
+def escape_bash_string(text: str) -> str:
+    """
+    Escape special characters in a string for safe use in bash commands.
+    """
+    text = text.replace("\\", "\\\\")  # Escape backslashes
+    text = text.replace('"', '\\"')  # Escape double quotes
+    text = text.replace("`", "\\`")  # Escape backticks (command substitution)
+    text = text.replace("$", "\\$")  # Escape dollar signs (variable expansion)
+    return text

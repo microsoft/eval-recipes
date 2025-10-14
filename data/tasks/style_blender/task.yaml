@@ -1,0 +1,6 @@
+required_env_vars:
+  - ANTHROPIC_API_KEY # This is usually required for semantic_tests in test.py
+task_info:
+  difficulty: medium
+  non_deterministic_evals: true
+test_command: uv run --no-project /project/test.py
