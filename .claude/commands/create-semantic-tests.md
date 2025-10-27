@@ -10,23 +10,26 @@ READ AND UNDERSTAND:
 3. Study existing high-quality examples:
    - Read data/tasks/email_drafting/test.py and data/tasks/email_drafting/instructions.txt
    - Read data/tasks/style_blender/test.py and data/tasks/style_blender/instructions.txt
+   - Read data/tasks/news_research_tool/test.py and data/tasks/news_research_tool/instructions.txt
    - Read eval_recipes/benchmarking/semantic_test.py to understand how semantic tests work
 4. Note how these examples structure their tests and what makes them effective.
 
 
 PROVIDE TEST DATA (Highly Recommended):
-1. Consider whether the task would benefit from pre-provided test inputs in a data/ directory.
+1. Consider whether the task would benefit from pre-provided test inputs.
 2. Benefits of providing test data:
    - Makes tests more robust (test doesn't need to generate inputs)
    - Enables specific, deterministic validation and makes test behavior more predictable and reproducible
    - Allows tests to focus on output quality rather than input generation
-3. Look at data/tasks/email_drafting/data/ and data/tasks/style_blender/data/ as examples.
-4. If appropriate, create a data/ directory with sample inputs the tests can use.
+3. Two approaches for test data:
+   - **Simple data**: Embed directly in test.py as string constants (e.g., test queries, small text samples)
+   - **Complex data**: Create a data/ directory with sample files (e.g., multiple documents, different file formats)
+4. Look at data/tasks/email_drafting/data/ and data/tasks/style_blender/data/ as examples of complex test data.
 5. For tasks requiring distinct inputs (e.g., different writing styles, data formats), make inputs very different to make validation clear.
 
 
 DESIGN AND PLAN SEMANTIC TESTS:
-1. Design 3 focused semantic tests. Guidelines:
+1. Design up to 3 focused semantic tests. Guidelines:
    - Fewer, high-quality tests are better than many diluted tests
    - Each test should be distinct and justify its existence
    - Avoid redundant tests that check the same things
@@ -64,6 +67,12 @@ DESIGN AND PLAN SEMANTIC TESTS:
    - "Find the README and run the tool" NOT "Check if README exists"
    - "Run tool with test data and examine outputs" NOT "Look at the code"
    - "Create test inputs and validate results" NOT "Check if validation logic exists"
+
+5. Avoid hardcoded assumptions about code organization:
+   - Don't assume code will be in a specific directory (e.g., avoid "Look in scenarios/foo/")
+   - Instead, make tests search dynamically (e.g., "Find the code/README in the project")
+   - Task instructions may mention directories as output locations, not necessarily where code should live
+   - Let agents organize their code however they want - tests should be flexible
 
 
 WRITE THE TEST.PY:

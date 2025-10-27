@@ -1,7 +1,7 @@
 # Project specific
 __marimo__/
 media/
-data/benchmarking/runs/
+.benchmark_results/
 
 # Benchmarking generated reports
 benchmark_report.html

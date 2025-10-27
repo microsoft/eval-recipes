@@ -1,4 +1,5 @@
 import inspect
+import json
 from pathlib import Path
 import shutil
 import tempfile
@@ -67,14 +68,15 @@ Now start by making a todo list of steps you will take to analyze the failure an
 
 async def generate_task_report(benchmark_output_dir: Path, task_directory: Path) -> None:
     """
-    Generate a detailed failure analysis report for a single benchmark task.
+    Generate detailed failure analysis reports for a benchmark task.
+    Generates a separate report for each non-perfect trial.
 
     Args:
         benchmark_output_dir: Path to the benchmark run directory containing logs
         task_directory: Path to the task directory containing instructions.txt
 
     Creates:
-        FAILURE_REPORT.md in the benchmark_output_dir with detailed analysis
+        FAILURE_REPORT_trial_N.md in trial_N/ subdirectories for each non-perfect trial
     """
     # Get task name from directory name
     task_name = task_directory.name
@@ -84,6 +86,21 @@ async def generate_task_report(benchmark_output_dir: Path, task_directory: Path)
     if not instructions_file.exists():
         raise FileNotFoundError(f"Instructions file not found: {instructions_file}")
     task_instructions = instructions_file.read_text()
+
+    # Check if this is a multi-trial run by looking for aggregated_results.json
+    aggregated_results_path = benchmark_output_dir / "aggregated_results.json"
+    if not aggregated_results_path.exists():
+        logger.warning(f"No aggregated_results.json found in {benchmark_output_dir}")
+        return
+
+    # Load aggregated results to find which trials need reports
+    with aggregated_results_path.open() as f:
+        aggregated_data = json.load(f)
+
+    trials_data = aggregated_data.get("trials", [])
+    if not trials_data:
+        logger.warning(f"No trials found in aggregated results for {benchmark_output_dir}")
+        return
 
     # Read LOW_LEVEL_API.md for eval_recipes context
     low_level_api_path = Path(__file__).parents[2] / "docs" / "LOW_LEVEL_API.md"
@@ -99,57 +116,80 @@ async def generate_task_report(benchmark_output_dir: Path, task_directory: Path)
         eval_recipes_readme=eval_recipes_readme,
     )
 
-    # Create a temp dir to place files for Claude Agent SDK to work
-    temp_dir = Path(tempfile.mkdtemp(prefix=f"benchmark_report_{task_name}_"))
+    # Generate reports for each non-perfect trial
+    for trial_data in trials_data:
+        trial_number = trial_data.get("trial_number")
+        trial_score = trial_data.get("score", 0)
+        if trial_score >= 100.0:
+            logger.info(f"Skipping report for trial {trial_number} (perfect score)")
+            continue
 
-    try:
-        # Collect files from benchmark output directory
-        files_to_copy = {
-            "agent_output.log": benchmark_output_dir / "agent_output.log",
-            "test_output.log": benchmark_output_dir / "test_output.log",
-            "test_results.json": benchmark_output_dir / "test_results.json",
-            "test.py": benchmark_output_dir / "test.py",
-            "instructions.txt": task_directory / "instructions.txt",
-        }
+        trial_dir = benchmark_output_dir / f"trial_{trial_number}"
+        if not trial_dir.exists():
+            logger.warning(f"Trial directory not found: {trial_dir}")
+            continue
 
-        # Copy available files to temp directory
-        for dest_name, source_path in files_to_copy.items():
-            if source_path.exists():
-                dest_path = temp_dir / dest_name
-                shutil.copy2(source_path, dest_path)
+        logger.info(f"Generating failure report for trial {trial_number} (score: {trial_score})")
 
-        task_report_prompt = render(
-            TASK_REPORT_USER_PROMPT, task_name=task_name, original_instructions=task_instructions
-        )
+        # Create a temp dir to place files for Claude Agent SDK to work
+        temp_dir = Path(tempfile.mkdtemp(prefix=f"benchmark_report_{task_name}_trial{trial_number}_"))
 
-        options = ClaudeAgentOptions(
-            system_prompt=rendered_system_prompt,
-            cwd=str(temp_dir),
-            allowed_tools=["Read", "Grep", "Write"],
-            max_turns=30,
-            permission_mode="default",
-        )
-        messages = []  # For debugging purposes only
-        async with ClaudeSDKClient(options=options) as client:
-            await client.query(task_report_prompt)
-            async for _message in client.receive_response():
-                messages.append(_message)
+        try:
+            # Collect files from trial directory
+            files_to_copy = {
+                "agent_output.log": trial_dir / "agent_output.log",
+                "test_output.log": trial_dir / "test_output.log",
+                "test_results.json": trial_dir / "test_results.json",
+                "test.py": trial_dir / "test.py",
+                "instructions.txt": task_directory / "instructions.txt",
+            }
 
-        # Get the report from the temp dir and move it to the benchmark output dir
-        report_path = temp_dir / "FAILURE_REPORT.md"
-        if report_path.exists():
-            output_path = benchmark_output_dir / "FAILURE_REPORT.md"
-            shutil.copy2(report_path, output_path)
-        else:
-            # If no report was generated, create a placeholder
-            output_path = benchmark_output_dir / "FAILURE_REPORT.md"
-            output_path.write_text(
-                f"# Failure Report for {task_name}\n\nNo report was generated. Check the logs for details.\n"
+            # Copy available files to temp directory
+            for dest_name, source_path in files_to_copy.items():
+                if source_path.exists():
+                    dest_path = temp_dir / dest_name
+                    shutil.copy2(source_path, dest_path)
+
+            # Update prompt to include trial context
+            task_report_prompt = render(
+                TASK_REPORT_USER_PROMPT,
+                task_name=f"{task_name} (Trial {trial_number})",
+                original_instructions=task_instructions,
             )
 
-    finally:
-        if temp_dir.exists():
-            shutil.rmtree(temp_dir)
+            options = ClaudeAgentOptions(
+                system_prompt=rendered_system_prompt,
+                cwd=str(temp_dir),
+                allowed_tools=["Read", "Grep", "Write"],
+                max_turns=30,
+                permission_mode="default",
+            )
+            messages = []  # store messages for debugging purposes only
+            async with ClaudeSDKClient(options=options) as client:
+                await client.query(task_report_prompt)
+                async for _message in client.receive_response():
+                    messages.append(_message)
+
+            # Get the report from the temp dir and move it to the trial directory
+            report_path = temp_dir / "FAILURE_REPORT.md"
+            if report_path.exists():
+                generated_content = report_path.read_text()
+                # Prepend metadata header to each report
+                metadata_header = f"""---
+**Task**: {task_name}
+**Trial**: {trial_number}
+**Score**: {trial_score:.1f}%
+---
+
+"""
+                final_content = metadata_header + generated_content
+
+                output_path = trial_dir / f"FAILURE_REPORT_trial_{trial_number}.md"
+                output_path.write_text(final_content)
+                logger.info(f"Failure report for trial {trial_number} saved to: {output_path}")
+        finally:
+            if temp_dir.exists():
+                shutil.rmtree(temp_dir)
 
 
 CONSOLIDATED_REPORT_SYSTEM_PROMPT = """You are an expert at synthesizing benchmark failure analysis reports and you will be synthesizing across many such reports. \
@@ -161,6 +201,10 @@ Benchmarking is a way of evaluating AI agents on real-world tasks within sandbox
 Each task includes a natural language instruction, test scripts for verification, and runs in isolated containers. \
 Tasks range from programming to document creation.
 
+Each task can be run multiple times (trials) to assess consistency. \
+You will see multiple reports for the same task but different trial numbers. \
+This helps identify if failures are consistent or sporadic.
+
 ABOUT THESE REPORTS:
 Each individual report was generated by analyzing:
 - The task instruction (what the agent was asked to do)
@@ -168,6 +212,15 @@ Each individual report was generated by analyzing:
 - Test output (which tests passed/failed and why)
 - Original Dockerfile (environment setup)
 - Test files (pytest requirements)
+
+Each report header contains:
+- Task name: The benchmark task being evaluated
+- Trial number: Which trial run (tasks are run multiple times)
+- Score: The final score for that specific trial (0-100)
+
+When analyzing, consider:
+- Do the same tasks fail consistently across trials? (indicates systemic issues)
+- Do some tasks fail sporadically? (indicates non-deterministic problems)
 
 YOUR GOAL:
 Identify patterns, common failure modes, and systemic issues across multiple task failures.
@@ -208,40 +261,32 @@ DO NOT add:
 {{all_reports}}"""
 
 
-def _extract_agent_name(run_dir_name: str, all_run_dirs: list[str]) -> str:
+def _extract_agent_name(run_dir_name: str, known_agents: list[str]) -> str:
     """
     Extract agent name from run directory name.
 
     The directory format is {agent_name}_{task_name}, where both can contain underscores.
-    We find the agent name by identifying common prefixes across multiple directories.
+    We match against known agent names to find the correct agent.
 
     Args:
         run_dir_name: Name of the run directory (e.g., "claude_code_style_blender")
-        all_run_dirs: List of all run directory names for pattern matching
+        known_agents: List of known agent names from the agents directory
 
     Returns:
         The extracted agent name (e.g., "claude_code")
     """
+    # Try to match against known agents, preferring the longest match
+    # This handles cases where one agent name is a prefix of another (e.g., "gpt" vs "gpt4")
+    matching_agents = [agent for agent in known_agents if run_dir_name.startswith(agent + "_")]
+
+    if matching_agents:
+        # Return the longest matching agent name
+        return max(matching_agents, key=len)
+
+    # Fallback: use heuristic if no known agents match
+    # This handles cases where the agents directory might not be available
     parts = run_dir_name.split("_")
-
-    # Try progressively longer prefixes (1, 2, 3+ parts)
-    # Find the LONGEST prefix that appears in multiple directories
-    longest_agent_name = None
-    for i in range(1, len(parts)):
-        potential_agent = "_".join(parts[:i])
-
-        # Check if this prefix appears in at least one other directory
-        matching_count = sum(1 for d in all_run_dirs if d != run_dir_name and d.startswith(potential_agent + "_"))
-
-        if matching_count > 0:
-            # Found a common prefix, keep looking for a longer one
-            longest_agent_name = potential_agent
-        else:
-            # No more matches at this length, stop searching
-            break
-
-    # Return the longest matching prefix, or fallback to first part
-    return longest_agent_name if longest_agent_name else (parts[0] if parts else run_dir_name)
+    return parts[0] if parts else run_dir_name
 
 
 def _group_reports_by_agent(benchmarks_output_dir: Path) -> dict[str, list[tuple[str, Path]]]:
@@ -252,29 +297,39 @@ def _group_reports_by_agent(benchmarks_output_dir: Path) -> dict[str, list[tuple
         benchmarks_output_dir: Directory containing benchmark run outputs
 
     Returns:
-        Dictionary mapping agent name to list of (run_dir_name, report_path) tuples
+        Dictionary mapping agent name to list of (report_identifier, report_path) tuples
+        Report identifier format: "{agent}_{task}_trial_{N}"
     """
-    # Get all run directories
-    all_run_dirs = [d.name for d in benchmarks_output_dir.iterdir() if d.is_dir()]
+    # Try to discover known agents from the agents directory
+    # Look for agents directory relative to the repo structure
+    repo_root = Path(__file__).parents[2]
+    agents_dir = repo_root / "data" / "agents"
+    known_agents: list[str] = []
 
-    # Group reports by agent
+    if agents_dir.exists() and agents_dir.is_dir():
+        known_agents = [d.name for d in agents_dir.iterdir() if d.is_dir()]
+        logger.info(f"Found {len(known_agents)} known agent(s): {', '.join(known_agents)}")
+
     agent_reports: dict[str, list[tuple[str, Path]]] = {}
-
     for run_dir in benchmarks_output_dir.iterdir():
         if not run_dir.is_dir():
             continue
 
-        failure_report_path = run_dir / "FAILURE_REPORT.md"
-        if not failure_report_path.exists():
-            continue
-
-        # Extract agent name from directory name
-        agent_name = _extract_agent_name(run_dir.name, all_run_dirs)
-
+        agent_name = _extract_agent_name(run_dir.name, known_agents)
         if agent_name not in agent_reports:
             agent_reports[agent_name] = []
 
-        agent_reports[agent_name].append((run_dir.name, failure_report_path))
+        # Look for trial subdirectories with failure reports
+        trial_dirs = list(run_dir.glob("trial_*"))
+        if not trial_dirs:
+            logger.warning(f"No trial directories found in {run_dir.name}, skipping")
+            continue
+
+        # Collect reports from each trial
+        for trial_dir in sorted(trial_dirs):
+            for report_path in trial_dir.glob("FAILURE_REPORT_trial_*.md"):
+                report_identifier = f"{run_dir.name}_{trial_dir.name}"
+                agent_reports[agent_name].append((report_identifier, report_path))
 
     return agent_reports
 
@@ -322,9 +377,11 @@ async def generate_summary_report(benchmarks_output_dir: Path) -> None:
                 max_turns=10,
                 permission_mode="default",
             )
+            messages = []
             async with ClaudeSDKClient(options=options) as client:
                 await client.query(consolidated_user_prompt)
-                async for _ in client.receive_response():
+                async for msg in client.receive_response():
+                    messages.append(msg)
                     continue
 
             # Get the report from the temp dir and move it to the benchmark output dir

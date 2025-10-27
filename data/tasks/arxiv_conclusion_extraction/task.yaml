@@ -1,4 +1,7 @@
 task_info:
   difficulty: easy
   non_deterministic_evals: false
+  categories:
+    - document_processing
+    - research
 test_command: uv run --no-project /project/test.py --conclusion /project/Conclusion.txt

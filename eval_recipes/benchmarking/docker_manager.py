@@ -8,6 +8,7 @@ import tarfile
 import uuid
 
 import docker
+import docker.errors
 from docker.models.containers import Container, ExecResult
 from docker.models.images import Image
 
@@ -79,31 +80,45 @@ class DockerManager:
         self.log_dir.mkdir(parents=True, exist_ok=True)
         log_file = self.log_dir / log_filename
 
-        image, build_logs_generator = client.images.build(
-            fileobj=BytesIO(dockerfile.encode()),
-            tag=image_tag,
-            rm=True,
-        )
+        try:
+            image, build_logs_generator = client.images.build(
+                fileobj=BytesIO(dockerfile.encode()),
+                tag=image_tag,
+                rm=True,
+            )
 
-        # Stream logs to file and collect them
-        complete_logs = ""
-        with log_file.open("w") as f:
-            for chunk in build_logs_generator:
-                if isinstance(chunk, dict) and "stream" in chunk:
-                    text = chunk["stream"]
-                    if isinstance(text, str):
-                        f.write(text)
-                        complete_logs += text
+            # Stream logs to file and collect them
+            complete_logs = ""
+            with log_file.open("w") as f:
+                for chunk in build_logs_generator:
+                    if isinstance(chunk, dict) and "stream" in chunk:
+                        text = chunk["stream"]
+                        if isinstance(text, str):
+                            f.write(text)
+                            complete_logs += text
 
-        # Get the actual tag assigned to the image
-        if image.tags:
-            actual_tag = image.tags[0]
-        elif image.id:
-            actual_tag = image.id
-        else:
-            raise RuntimeError("Built image has no tags or ID")
+            # Get the actual tag assigned to the image
+            if image.tags:
+                actual_tag = image.tags[0]
+            elif image.id:
+                actual_tag = image.id
+            else:
+                raise RuntimeError("Built image has no tags or ID")
 
-        return (image, complete_logs, actual_tag)
+            return (image, complete_logs, actual_tag)
+
+        except docker.errors.BuildError as e:
+            # Save build logs even on failure
+            with log_file.open("w") as f:
+                for log_entry in e.build_log:
+                    if isinstance(log_entry, dict):
+                        if "stream" in log_entry:
+                            f.write(log_entry["stream"])
+                        elif "error" in log_entry:
+                            f.write(f"ERROR: {log_entry['error']}\n")
+                        elif "errorDetail" in log_entry:
+                            f.write(f"ERROR DETAIL: {log_entry['errorDetail']}\n")
+            raise
 
     def _run_container(
         self,

@@ -1,0 +1,83 @@
+# Expected directory structure for Textualize/rich at commit 27c2d2df7523315de4b81577d414db8c1c7312f9
+# This represents ~75% of the documentation files that should be extracted and converted
+# All .rst files should be converted to .md format
+
+repo_url: "https://github.com/Textualize/rich"
+commit: "27c2d2df7523315de4b81577d414db8c1c7312f9"
+
+# Expected folders in docs/source/
+expected_folders:
+  - "docs/source/appendix"
+  - "docs/source/reference"
+
+# Expected files in docs/source/ (should be converted from .rst to .md)
+# This is ~75% of the total files (20 out of 26)
+expected_files:
+  - "docs/source/index.md"
+  - "docs/source/introduction.md"
+  - "docs/source/console.md"
+  - "docs/source/progress.md"
+  - "docs/source/tables.md"
+  - "docs/source/panel.md"
+  - "docs/source/layout.md"
+  - "docs/source/text.md"
+  - "docs/source/style.md"
+  - "docs/source/markup.md"
+  - "docs/source/markdown.md"
+  - "docs/source/syntax.md"
+  - "docs/source/highlighting.md"
+  - "docs/source/pretty.md"
+  - "docs/source/logging.md"
+  - "docs/source/traceback.md"
+  - "docs/source/tree.md"
+  - "docs/source/columns.md"
+  - "docs/source/live.md"
+  - "docs/source/prompt.md"
+
+# Expected files in docs/source/appendix/ (2 files total, expecting 100%)
+expected_files_appendix:
+  - "docs/source/appendix/box.md"
+  - "docs/source/appendix/colors.md"
+
+# Expected files in docs/source/reference/ (36 files total, expecting ~75% = 27 files)
+expected_files_reference:
+  - "docs/source/reference/console.md"
+  - "docs/source/reference/text.md"
+  - "docs/source/reference/style.md"
+  - "docs/source/reference/color.md"
+  - "docs/source/reference/table.md"
+  - "docs/source/reference/columns.md"
+  - "docs/source/reference/panel.md"
+  - "docs/source/reference/layout.md"
+  - "docs/source/reference/align.md"
+  - "docs/source/reference/padding.md"
+  - "docs/source/reference/progress.md"
+  - "docs/source/reference/progress_bar.md"
+  - "docs/source/reference/status.md"
+  - "docs/source/reference/spinner.md"
+  - "docs/source/reference/bar.md"
+  - "docs/source/reference/live.md"
+  - "docs/source/reference/syntax.md"
+  - "docs/source/reference/markdown.md"
+  - "docs/source/reference/pretty.md"
+  - "docs/source/reference/tree.md"
+  - "docs/source/reference/traceback.md"
+  - "docs/source/reference/logging.md"
+  - "docs/source/reference/prompt.md"
+  - "docs/source/reference/markup.md"
+  - "docs/source/reference/emoji.md"
+  - "docs/source/reference/rule.md"
+  - "docs/source/reference/json.md"
+
+# Additional files that should be present
+other_expected_files:
+  - "README.md"  # Root README should be extracted
+
+# Total expected file count for 75% threshold
+total_expected_count: 49  # 20 (docs/source) + 2 (appendix) + 27 (reference)
+
+notes: |
+  - All .rst files should be converted to .md format
+  - Directory structure should be preserved (docs/source/ hierarchy including subdirectories)
+  - Images should NOT be included in the output
+  - The tool should extract at least 75% of the documentation files listed above (37+ out of 49)

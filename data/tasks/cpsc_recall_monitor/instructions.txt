@@ -1,0 +1,3 @@
+I need a tool that monitors CPSC consumer product recalls. It should take a month (like "January 2025" or "2025-01") and create a CSV file cataloging all recalled products for that month.
+
+The output CSV should include product name, recall date, manufacturer, hazard description, and the recall URL for details.

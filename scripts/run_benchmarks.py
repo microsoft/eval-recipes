@@ -30,7 +30,7 @@ load_dotenv()
 @click.option(
     "--runs-dir",
     type=click.Path(file_okay=False, path_type=Path),
-    default=lambda: Path(__file__).parents[1] / "data" / "benchmarking" / "runs",
+    default=lambda: Path(__file__).parents[1] / ".benchmark_results",
     help="Directory to store benchmark run results",
 )
 @click.option(
@@ -47,8 +47,7 @@ load_dotenv()
     multiple=True,
     default=(),
     help="Filter tasks by field. Format: field=value or field.nested=value1,value2. "
-    "Can specify multiple times (AND logic). Examples: difficulty=medium, "
-    "name=email_drafting,arxiv_conclusion_extraction, task_info.non_deterministic_evals=true. ",
+    "Can specify multiple times (AND logic). Example: difficulty=medium",
 )
 @click.option(
     "--generate-reports",
@@ -62,6 +61,12 @@ load_dotenv()
     default=5,
     help="Maximum number of tasks to run in parallel",
 )
+@click.option(
+    "--num-trials",
+    type=int,
+    default=1,
+    help="Number of times to run each task",
+)
 def main(
     agents_dir: Path,
     tasks_dir: Path,
@@ -70,6 +75,7 @@ def main(
     task_filters: tuple[str, ...],
     generate_reports: bool,
     max_parallel_tasks: int,
+    num_trials: int,
 ) -> None:
     """Run benchmarks for LLM agents."""
     harness = Harness(
@@ -83,6 +89,7 @@ def main(
         agent_filters=list(agent_filters) if agent_filters else None,
         task_filters=list(task_filters) if task_filters else None,
         max_parallel_tasks=max_parallel_tasks,
+        num_trials=num_trials,
     )
     asyncio.run(harness.run(generate_reports=generate_reports))
 

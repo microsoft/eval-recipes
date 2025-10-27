@@ -1,7 +1,5 @@
 # Copyright (c) Microsoft. All rights reserved.
 
-"""Generate an interactive HTML dashboard for benchmark evaluation runs."""
-
 from collections import defaultdict
 from dataclasses import dataclass
 from html import escape
@@ -14,27 +12,37 @@ import yaml
 
 @dataclass
 class TaskResult:
-    """Results for a single task run."""
+    """Results for a single task run (aggregated across trials)."""
 
     task_name: str
     agent_name: str
-    score: float
+    score: float  # Mean score across trials
     instructions: str
     metadata: dict
     task_yaml_data: dict
-    failure_report: str | None
+    # Trial statistics
+    num_trials: int = 1
+    trial_scores: list[float] | None = None  # Individual trial scores
+    trials: list[dict] | None = None  # Full trial data including metadata and failure_report per trial
+    std_dev: float = 0.0
+    min_score: float = 0.0
+    max_score: float = 0.0
+    median_score: float = 0.0
+    num_perfect_trials: int = 0
 
 
 def _load_task_results(benchmarks_output_dir: Path, tasks_directory: Path) -> list[TaskResult]:
     """
     Load all task results from benchmark output directory.
 
+    Loads aggregated results across all trials.
+
     Args:
         benchmarks_output_dir: Directory containing benchmark run outputs
         tasks_directory: Directory containing task definitions
 
     Returns:
-        List of TaskResult objects
+        List of TaskResult objects with aggregated trial statistics
     """
     results = []
 
@@ -62,16 +70,28 @@ def _load_task_results(benchmarks_output_dir: Path, tasks_directory: Path) -> li
         if not agent_name or not task_name or not task_dir_path:
             continue
 
-        # Load test results
-        test_results_path = run_dir / "test_results.json"
-        if not test_results_path.exists():
+        # Load aggregated results
+        aggregated_results_path = run_dir / "aggregated_results.json"
+        if not aggregated_results_path.exists():
             continue
 
-        with test_results_path.open() as f:
-            test_data = json.load(f)
+        with aggregated_results_path.open() as f:
+            aggregated_data = json.load(f)
 
-        score = test_data.get("score", 0.0)
-        metadata = test_data.get("metadata", {})
+        mean_score = aggregated_data.get("mean_score", 0.0)
+        median_score = aggregated_data.get("median_score", 0.0)
+        std_dev = aggregated_data.get("std_dev", 0.0)
+        min_score = aggregated_data.get("min_score", 0.0)
+        max_score = aggregated_data.get("max_score", 0.0)
+        num_trials = aggregated_data.get("num_trials", 1)
+        num_perfect_trials = aggregated_data.get("num_perfect_trials", 0)
+
+        # Extract individual trial scores
+        trials = aggregated_data.get("trials", [])
+        trial_scores = [trial.get("score", 0.0) for trial in trials]
+
+        # Get metadata from first trial (they should all have same instructions)
+        metadata = trials[0].get("metadata", {}) if trials else {}
         instructions = metadata.get("instructions", "No instructions available")
 
         # Load task.yaml to get all task configuration
@@ -81,22 +101,33 @@ def _load_task_results(benchmarks_output_dir: Path, tasks_directory: Path) -> li
             with task_yaml_path.open() as f:
                 task_yaml_data = yaml.safe_load(f) or {}
 
-        # Load failure report if it exists and score is not 100%
-        failure_report = None
-        if score < 100.0:
-            failure_report_path = run_dir / "FAILURE_REPORT.md"
-            if failure_report_path.exists():
-                failure_report = failure_report_path.read_text()
+        # Attach failure reports to each trial
+        for trial in trials:
+            trial_num = trial.get("trial_number")
+            trial_dir = run_dir / f"trial_{trial_num}"
+            report_path = trial_dir / f"FAILURE_REPORT_trial_{trial_num}.md"
+
+            if report_path.exists():
+                trial["failure_report"] = report_path.read_text()
+            else:
+                trial["failure_report"] = None
 
         results.append(
             TaskResult(
                 task_name=task_name,
                 agent_name=agent_name,
-                score=score,
+                score=mean_score,
                 instructions=instructions,
                 metadata=metadata,
                 task_yaml_data=task_yaml_data,
-                failure_report=failure_report,
+                num_trials=num_trials,
+                trial_scores=trial_scores,
+                trials=trials,
+                std_dev=std_dev,
+                min_score=min_score,
+                max_score=max_score,
+                median_score=median_score,
+                num_perfect_trials=num_perfect_trials,
             )
         )
 
@@ -117,12 +148,24 @@ def _extract_categorical_dimensions(results: list[TaskResult]) -> dict[str, set[
     """
     dimensions: dict[str, set[str]] = defaultdict(set)
 
+    # Fields to exclude from metrics display
+    exclude_fields = {"non_deterministic_evals"}
+
     for result in results:
         task_info = result.task_yaml_data.get("task_info", {})
         for key, value in task_info.items():
-            # Only include string and boolean fields (categorical data)
+            # Skip excluded fields
+            if key in exclude_fields:
+                continue
+
+            # Handle string and boolean fields
             if isinstance(value, (str, bool)):
                 dimensions[key].add(str(value))
+            # Handle list fields (like categories)
+            elif isinstance(value, list):
+                for item in value:
+                    if isinstance(item, str):
+                        dimensions[key].add(item)
 
     return dict(dimensions)
 
@@ -131,9 +174,12 @@ def _calculate_metrics_by_dimension(results: list[TaskResult], dimension: str) -
     """
     Calculate metrics grouped by a specific dimension from task_info.
 
+    Supports both single-value dimensions (e.g., difficulty) and multi-value
+    dimensions (e.g., categories) where a task can belong to multiple values.
+
     Args:
         results: List of TaskResult objects
-        dimension: The dimension key from task_info (e.g., "difficulty", "non_deterministic_evals")
+        dimension: The dimension key from task_info (e.g., "difficulty", "categories")
 
     Returns:
         Dictionary mapping dimension values to metrics (avg, count, perfect)
@@ -143,15 +189,20 @@ def _calculate_metrics_by_dimension(results: list[TaskResult], dimension: str) -
 
     for result in results:
         task_info = result.task_yaml_data.get("task_info", {})
-        value = str(task_info.get(dimension, "unknown"))
+        dimension_value = task_info.get(dimension, "unknown")
 
-        if value not in metrics:
-            metrics[value] = {"scores": [], "count": 0, "perfect": 0}
+        # Handle list-based dimensions (like categories)
+        values = [str(v) for v in dimension_value] if isinstance(dimension_value, list) else [str(dimension_value)]
 
-        metrics[value]["scores"].append(result.score)
-        metrics[value]["count"] += 1
-        if result.score == 100.0:
-            metrics[value]["perfect"] += 1
+        # Add this task's score to all its values
+        for value in values:
+            if value not in metrics:
+                metrics[value] = {"scores": [], "count": 0, "perfect": 0}
+
+            metrics[value]["scores"].append(result.score)
+            metrics[value]["count"] += 1
+            if result.score == 100.0:
+                metrics[value]["perfect"] += 1
 
     # Calculate averages and remove scores list
     final_metrics: dict[str, dict[str, float | int]] = {}
@@ -199,11 +250,7 @@ def _format_name(name: str) -> str:
 
 
 def _format_agent_name(agent_name: str) -> str:
-    """
-    Format agent name for display.
-
-    Wrapper around _format_name for backwards compatibility.
-    """
+    """Format agent name for display."""
     return _format_name(agent_name)
 
 
@@ -329,7 +376,43 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
         .task-count {
             color: var(--text-muted);
             font-size: 1.1rem;
+            margin-bottom: 1rem;
+        }
+
+        /* Consistency Metrics */
+        .consistency-metrics {
+            display: flex;
+            gap: 2rem;
             margin-bottom: 2rem;
+            padding: 1rem 1.5rem;
+            background: var(--surface);
+            border-radius: 8px;
+        }
+
+        .consistency-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .consistency-item .metric-label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .consistency-item .metric-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .consistency-item .metric-explanation {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-style: italic;
         }
 
         /* Metrics Section */
@@ -654,6 +737,127 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
             font-style: italic;
             padding: 1rem;
         }
+
+        /* Comparison Tables */
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 2rem;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .comparison-table th,
+        .comparison-table td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .comparison-table th {
+            background: var(--surface);
+            font-weight: 600;
+            color: var(--text);
+            user-select: none;
+        }
+
+        .comparison-table tbody tr:hover {
+            background: var(--surface);
+        }
+
+        .comparison-table td {
+            color: var(--text);
+        }
+
+        .best-score {
+            background: #d1fae5;
+            font-weight: 600;
+        }
+
+        .comparison-section {
+            margin-bottom: 3rem;
+        }
+
+        .comparison-section h2 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: var(--text);
+        }
+
+        .metric-explanations {
+            background: var(--surface);
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+        }
+
+        .metric-explanations h3 {
+            font-size: 1rem;
+            margin: 0 0 0.75rem 0;
+            color: var(--text);
+        }
+
+        .metric-explanations ul {
+            margin: 0;
+            padding-left: 1.5rem;
+            color: var(--text-muted);
+        }
+
+        .metric-explanations li {
+            margin-bottom: 0.5rem;
+        }
+
+        .metric-explanations strong {
+            color: var(--text);
+        }
+
+        /* Trial Tabs */
+        .trial-tabs {
+            display: flex;
+            gap: 0.25rem;
+            border-bottom: 2px solid var(--border);
+            margin-bottom: 1rem;
+        }
+
+        .trial-tab {
+            padding: 0.5rem 1rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-bottom: none;
+            border-radius: 4px 4px 0 0;
+            cursor: pointer;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            transition: all 0.2s;
+        }
+
+        .trial-tab:hover {
+            background: white;
+            color: var(--text);
+        }
+
+        .trial-tab.active {
+            background: white;
+            color: var(--primary);
+            border-color: var(--primary);
+            border-bottom: 2px solid white;
+            margin-bottom: -2px;
+        }
+
+        .trial-tab-contents {
+            position: relative;
+        }
+
+        .trial-tab-content {
+            display: none;
+        }
+
+        .trial-tab-content.active {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -666,16 +870,47 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
         <div class="tabs">""",
     ]
 
-    # Generate tabs for each agent
-    for idx, agent_name in enumerate(sorted(agent_results.keys())):
-        active_class = "active" if idx == 0 else ""
+    # Calculate cross-agent comparison metrics
+    agent_comparison_data = []
+    all_category_scores: dict[str, dict[str, float]] = {}
+
+    for agent_name, agent_tasks in sorted(agent_results.items()):
+        total_tasks = len(agent_tasks)
+        avg_score = sum(t.score for t in agent_tasks) / total_tasks if total_tasks > 0 else 0.0
+        std_devs = [t.std_dev for t in agent_tasks]
+        mean_std_dev = sum(std_devs) / len(std_devs) if std_devs else 0.0
+        consistent_tasks = sum(1 for t in agent_tasks if t.std_dev < 10.0)
+        consistency_percentage = (consistent_tasks / len(agent_tasks) * 100) if agent_tasks else 0.0
+
+        agent_comparison_data.append(
+            {
+                "name": agent_name,
+                "avg_score": avg_score,
+                "mean_std_dev": mean_std_dev,
+                "consistency_percentage": consistency_percentage,
+                "total_tasks": total_tasks,
+            }
+        )
+
+        # Calculate per-category scores for this agent
+        if "categories" in all_dimensions:
+            category_metrics = _calculate_metrics_by_dimension(agent_tasks, "categories")
+            for category, metrics in category_metrics.items():
+                if category not in all_category_scores:
+                    all_category_scores[category] = {}
+                all_category_scores[category][agent_name] = metrics["avg"]  # type: ignore[index]
+
+    # Generate Overview tab button (first tab, active by default)
+    html_parts.append("""
+            <button class="tab active" onclick="switchTab(event, 'overview')">Overview</button>""")
+
+    # Generate tabs for each agent (none active since Overview is first)
+    for agent_name in sorted(agent_results.keys()):
         formatted_agent_name = _format_agent_name(agent_name)
         html_parts.extend(
             [
                 """
-            <button class="tab """,
-                active_class,
-                """" onclick="switchTab(event, '""",
+            <button class="tab" onclick="switchTab(event, '""",
                 escape(agent_name),
                 """')">""",
                 escape(formatted_agent_name),
@@ -686,21 +921,159 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
     html_parts.append("""
         </div>""")
 
-    # Generate content for each agent
-    for idx, (agent_name, agent_tasks) in enumerate(sorted(agent_results.items())):
-        active_class = "active" if idx == 0 else ""
+    # Generate Overview tab content (active by default)
+    html_parts.append("""
+
+        <div class="tab-content active" id="tab-overview">
+            <h1>Agent Comparison</h1>
+
+            <!-- Overall Performance Table -->
+            <div class="comparison-section">
+                <h2>Overall Performance</h2>
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>Agent</th>
+                            <th>Avg Score</th>
+                            <th>Mean Variability</th>
+                            <th>Consistency Rate</th>
+                            <th>Tasks Run</th>
+                        </tr>
+                    </thead>
+                    <tbody>""")
+
+    # Find best performer for each metric
+    best_avg = max((a["avg_score"] for a in agent_comparison_data), default=0)
+    best_variability = min((a["mean_std_dev"] for a in agent_comparison_data), default=float("inf"))
+    best_consistency = max((a["consistency_percentage"] for a in agent_comparison_data), default=0)
+
+    for agent_data in agent_comparison_data:
+        agent_formatted = _format_agent_name(agent_data["name"])
+
+        # Determine best score classes
+        avg_class = " best-score" if agent_data["avg_score"] == best_avg else ""
+        var_class = " best-score" if agent_data["mean_std_dev"] == best_variability else ""
+        cons_class = " best-score" if agent_data["consistency_percentage"] == best_consistency else ""
+
+        html_parts.append(f"""
+                        <tr>
+                            <td>{escape(agent_formatted)}</td>
+                            <td class="{avg_class}">{agent_data["avg_score"]:.1f}%</td>
+                            <td class="{var_class}">±{agent_data["mean_std_dev"]:.1f}%</td>
+                            <td class="{cons_class}">{agent_data["consistency_percentage"]:.0f}%</td>
+                            <td>{agent_data["total_tasks"]}</td>
+                        </tr>""")
+
+    html_parts.append("""
+                    </tbody>
+                </table>
+                <div class="metric-explanations">
+                    <h3>Metric Descriptions</h3>
+                    <ul>
+                        <li><strong>Avg Score:</strong> Average score across all tasks (0-100%). Higher is better.</li>
+                        <li><strong>Mean Variability:</strong> Average trial-to-trial variation across tasks. Lower values indicate more consistent and reliable task completion.</li>
+                        <li><strong>Consistency Rate:</strong> Percentage of tasks where the agent showed low variability across trials of the same task (&lt;10% std dev). Higher is better.</li>
+                    </ul>
+                </div>
+            </div>""")
+
+    # Category Comparison Table
+    if all_category_scores:
+        sorted_agents = sorted(agent_results.keys())
+
+        html_parts.append("""
+
+            <!-- Category Comparison Table -->
+            <div class="comparison-section">
+                <h2>Performance by Category</h2>
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>Category</th>""")
+
+        for agent_name in sorted_agents:
+            agent_formatted = _format_agent_name(agent_name)
+            html_parts.append(f"""
+                            <th>{escape(agent_formatted)}</th>""")
+
+        html_parts.append("""
+                        </tr>
+                    </thead>
+                    <tbody>""")
+
+        for category in sorted(all_category_scores.keys()):
+            # Find best score for this category
+            category_scores = all_category_scores[category]
+            best_category_score = max(category_scores.values()) if category_scores else 0
+
+            html_parts.append(f"""
+                        <tr>
+                            <td>{escape(_format_name(category))}</td>""")
+
+            for agent_name in sorted_agents:
+                score = category_scores.get(agent_name, 0)
+                score_class = " best-score" if score == best_category_score and score > 0 else ""
+                score_display = f"{score:.1f}%" if score > 0 else "—"
+                html_parts.append(f"""
+                            <td class="{score_class}">{score_display}</td>""")
+
+            html_parts.append("""
+                        </tr>""")
+
+        html_parts.append("""
+                    </tbody>
+                </table>
+            </div>""")
+
+    # Consolidated Reports Section
+    html_parts.append("""
+
+            <!-- Consolidated Reports -->
+            <div class="comparison-section">
+                <h2>Identified Areas for Improvement</h2>""")
+
+    for agent_name in sorted(agent_results.keys()):
+        if agent_name in consolidated_reports:
+            agent_formatted = _format_agent_name(agent_name)
+            agent_id = escape(agent_name)
+            overview_consolidated_id = f"overview-consolidated-{agent_id}"
+
+            # Store report content for rendering
+            markdown_content[overview_consolidated_id] = consolidated_reports[agent_name]
+
+            html_parts.append(f"""
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <h3>{escape(agent_formatted)} - Consolidated Report</h3>
+                    <span class="collapsible-icon">▶</span>
+                </div>
+                <div class="collapsible-content">
+                    <div id='{overview_consolidated_id}' class="markdown-content tall"></div>
+                </div>""")
+
+    html_parts.append("""
+            </div>
+        </div>""")
+
+    # Generate content for each agent (none active since Overview is first)
+    for agent_name, agent_tasks in sorted(agent_results.items()):
         agent_id = escape(agent_name)
 
         # Calculate overall stats
         total_tasks = len(agent_tasks)
         avg_score = sum(t.score for t in agent_tasks) / total_tasks if total_tasks > 0 else 0.0
 
+        # Calculate consistency metrics
+        std_devs = [t.std_dev for t in agent_tasks]
+        mean_std_dev = sum(std_devs) / len(std_devs) if std_devs else 0.0
+
+        # Consistency score: % of tasks with std_dev < 10%
+        consistent_tasks = sum(1 for t in agent_tasks if t.std_dev < 10.0)
+        consistency_percentage = (consistent_tasks / len(agent_tasks) * 100) if agent_tasks else 0.0
+
         html_parts.extend(
             [
                 """
-        <div class="tab-content """,
-                active_class,
-                """" id="tab-""",
+        <div class="tab-content" id="tab-""",
                 agent_id,
                 """">
             <div class="overall-score">""",
@@ -709,6 +1082,23 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
             <div class="task-count">Average score across """,
                 str(total_tasks),
                 """ task(s)</div>
+
+            <div class="consistency-metrics">
+                <div class="consistency-item">
+                    <span class="metric-label">Mean Variability</span>
+                    <span class="metric-value">±""",
+                f"{mean_std_dev:.1f}%",
+                """</span>
+                    <span class="metric-explanation">Average trial-to-trial variation (lower is better)</span>
+                </div>
+                <div class="consistency-item">
+                    <span class="metric-label">Consistency Rate</span>
+                    <span class="metric-value">""",
+                f"{consistency_percentage:.0f}%",
+                """</span>
+                    <span class="metric-explanation">Tasks with &lt;10% variation (higher is better)</span>
+                </div>
+            </div>
 
             <div class="metrics-section">
                 <h2>Metrics Breakdown</h2>
@@ -771,7 +1161,7 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
                     """
 
             <div class="collapsible-header" onclick="toggleCollapsible(this)">
-                <h3>High Level Failure Analysis</h3>
+                <h3>Identified Areas for Improvement</h3>
                 <span class="collapsible-icon">▶</span>
             </div>
             <div class="collapsible-content">
@@ -798,6 +1188,13 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
             )
 
             formatted_task_name = _format_name(task.task_name)
+
+            # Format score display with trial statistics
+            if task.num_trials > 1:
+                score_display = f"{task.score:.1f}% ± {task.std_dev:.1f}% ({task.min_score:.1f}%-{task.max_score:.1f}%)"
+            else:
+                score_display = f"{task.score:.1f}%"
+
             html_parts.extend(
                 [
                     """
@@ -809,7 +1206,7 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
                         <div class="task-score """,
                     score_class,
                     """">""",
-                    f"{task.score:.1f}%",
+                    score_display,
                     """</div>
                     </div>
                     <div class="task-details">
@@ -835,46 +1232,170 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
                 ]
             )
 
-            # Test output (nested collapsible)
-            metadata_json = json.dumps(task.metadata, indent=2)
-            html_parts.extend(
-                [
-                    """
+            # Trial scores breakdown (if multi-trial)
+            if task.num_trials > 1 and task.trial_scores:
+                trial_scores_html = "<ul>"
+                for idx, score in enumerate(task.trial_scores, 1):
+                    trial_scores_html += f"<li>Trial {idx}: {score:.1f}%</li>"
+                trial_scores_html += "</ul>"
+                trial_scores_html += (
+                    f"<p><strong>Summary:</strong> {task.num_perfect_trials}/{task.num_trials} perfect trials</p>"
+                )
+
+                html_parts.extend(
+                    [
+                        """
+                            <div class="nested-collapsible-header" onclick="toggleNestedCollapsible(this)">
+                                <h4>Trial Breakdown (""",
+                        str(task.num_trials),
+                        """ trials)</h4>
+                                <span class="collapsible-icon">▶</span>
+                            </div>
+                            <div class="nested-collapsible-content">
+                                """,
+                        trial_scores_html,
+                        """
+                            </div>""",
+                    ]
+                )
+
+            # Test output - with tabs for multiple trials
+            html_parts.append("""
                         </div>
-                        <div class="task-detail-section">
+                        <div class="task-detail-section">""")
+
+            if task.num_trials > 1 and task.trials:
+                # Multiple trials - show tabbed interface
+                html_parts.append("""
+                            <div class="nested-collapsible-header" onclick="toggleNestedCollapsible(this)">
+                                <h4>Test Outputs by Trial</h4>
+                                <span class="collapsible-icon">▶</span>
+                            </div>
+                            <div class="nested-collapsible-content">
+                                <div class="trial-tabs">""")
+
+                # Generate tabs for each trial
+                for idx, trial in enumerate(task.trials):
+                    trial_num = trial.get("trial_number", idx + 1)
+                    active_class = "active" if idx == 0 else ""
+                    tab_id = f"{task_id}-trial-{trial_num}"
+
+                    html_parts.append(
+                        f"""
+                                    <button class="trial-tab {active_class}" onclick="switchTrialTab(event, '{tab_id}')">
+                                        Trial {trial_num}
+                                    </button>"""
+                    )
+
+                html_parts.append("""
+                                </div>
+                                <div class="trial-tab-contents">""")
+
+                # Generate content for each trial
+                for idx, trial in enumerate(task.trials):
+                    trial_num = trial.get("trial_number", idx + 1)
+                    active_class = "active" if idx == 0 else ""
+                    tab_id = f"{task_id}-trial-{trial_num}"
+                    trial_metadata = trial.get("metadata", {})
+                    trial_metadata_json = json.dumps(trial_metadata, indent=2)
+
+                    html_parts.append(
+                        f"""
+                                    <div class="trial-tab-content {active_class}" id="{tab_id}">
+                                        <pre class="json-content">{escape(trial_metadata_json)}</pre>
+                                    </div>"""
+                    )
+
+                html_parts.append("""
+                                </div>
+                            </div>""")
+            else:
+                # Single trial - show as before
+                metadata_json = json.dumps(task.metadata, indent=2)
+                html_parts.extend(
+                    [
+                        """
                             <div class="nested-collapsible-header" onclick="toggleNestedCollapsible(this)">
                                 <h4>Test Output</h4>
                                 <span class="collapsible-icon">▶</span>
                             </div>
                             <div class="nested-collapsible-content">
                                 <pre class="json-content">""",
-                    escape(metadata_json),
-                    """</pre>
-                            </div>
-                        </div>""",
-                ]
-            )
-
-            # Failure report (nested collapsible, only if exists)
-            if task.failure_report:
-                failure_id = f"failure-{task_id}"
-                markdown_content[failure_id] = task.failure_report
-                html_parts.extend(
-                    [
-                        """
-                        <div class="task-detail-section">
-                            <div class="nested-collapsible-header" onclick="toggleNestedCollapsible(this)">
-                                <h4>Failure Analysis</h4>
-                                <span class="collapsible-icon">▶</span>
-                            </div>
-                            <div class="nested-collapsible-content">
-                                <div id='""",
-                        failure_id,
-                        """' class="markdown-content tall"></div>
-                            </div>
-                        </div>""",
+                        escape(metadata_json),
+                        """</pre>
+                            </div>""",
                     ]
                 )
+
+            html_parts.append("""
+                        </div>""")
+
+            # Failure reports - with tabs for trials
+            # Check if any trial has a failure report
+            if task.trials is not None:
+                trials_with_reports = [trial for trial in task.trials if trial.get("failure_report")]
+
+                if trials_with_reports:
+                    # Show tabbed interface for failure reports
+                    html_parts.append("""
+                        <div class="task-detail-section">
+                            <div class="nested-collapsible-header" onclick="toggleNestedCollapsible(this)">
+                                <h4>Failure Analysis by Trial</h4>
+                                <span class="collapsible-icon">▶</span>
+                            </div>
+                            <div class="nested-collapsible-content">""")
+
+                    if len(trials_with_reports) > 1:
+                        # Multiple trials - show tabs
+                        html_parts.append("""
+                                <div class="trial-tabs">""")
+
+                        for idx, trial in enumerate(trials_with_reports):
+                            trial_num = trial.get("trial_number", idx + 1)
+                            active_class = "active" if idx == 0 else ""
+                            tab_id = f"{task_id}-failure-trial-{trial_num}"
+
+                            html_parts.append(
+                                f"""
+                                    <button class="trial-tab {active_class}" onclick="switchTrialTab(event, '{tab_id}')">
+                                        Trial {trial_num}
+                                    </button>"""
+                            )
+
+                        html_parts.append("""
+                                </div>
+                                <div class="trial-tab-contents">""")
+
+                        # Generate content for each trial
+                        for idx, trial in enumerate(trials_with_reports):
+                            trial_num = trial.get("trial_number", idx + 1)
+                            active_class = "active" if idx == 0 else ""
+                            tab_id = f"{task_id}-failure-trial-{trial_num}"
+                            failure_id = f"failure-{tab_id}"
+                            markdown_content[failure_id] = trial.get("failure_report", "")
+
+                            html_parts.append(
+                                f"""
+                                    <div class="trial-tab-content {active_class}" id="{tab_id}">
+                                        <div id='{failure_id}' class="markdown-content tall"></div>
+                                    </div>"""
+                            )
+
+                        html_parts.append("""
+                                </div>""")
+                    else:
+                        # Single trial - no tabs needed
+                        trial = trials_with_reports[0]
+                        failure_id = f"failure-{task_id}"
+                        markdown_content[failure_id] = trial.get("failure_report", "")
+                        html_parts.append(
+                            f"""
+                                <div id='{failure_id}' class="markdown-content tall"></div>"""
+                        )
+
+                    html_parts.append("""
+                            </div>
+                        </div>""")
 
             html_parts.append("""
                     </div>
@@ -933,6 +1454,30 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
             if (content) {{
                 content.classList.toggle('open');
             }}
+        }}
+
+        function switchTrialTab(event, trialId) {{
+            // Get the parent trial-tabs container
+            const tabsContainer = event.currentTarget.parentElement;
+            const contentsContainer = tabsContainer.nextElementSibling;
+
+            // Hide all tab contents in this container
+            const tabContents = contentsContainer.querySelectorAll('.trial-tab-content');
+            tabContents.forEach(content => {{
+                content.classList.remove('active');
+            }});
+
+            // Remove active class from all tabs in this container
+            const tabs = tabsContainer.querySelectorAll('.trial-tab');
+            tabs.forEach(tab => {{
+                tab.classList.remove('active');
+            }});
+
+            // Show selected tab content
+            document.getElementById(trialId).classList.add('active');
+
+            // Add active class to clicked tab
+            event.currentTarget.classList.add('active');
         }}
 
         // Render all markdown content after page loads

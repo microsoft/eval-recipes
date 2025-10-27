@@ -3,4 +3,7 @@ required_env_vars:
 task_info:
   difficulty: easy
   non_deterministic_evals: true
+  categories:
+    - data_extraction
+    - research
 test_command: uv run --no-project /project/test.py --csv /project/gdpval_prompts.csv --summary /project/gdpval_summary.txt
