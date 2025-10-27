@@ -1,4 +1,2 @@
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-RUN apt-get install -y nodejs
-
+# Node.js is installed in base.dockerfile
 RUN npm i -g @openai/codex

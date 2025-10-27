@@ -4,6 +4,7 @@ import asyncio
 from datetime import UTC, datetime
 import json
 from pathlib import Path
+import statistics
 from typing import Any
 import uuid
 
@@ -16,7 +17,7 @@ from eval_recipes.benchmarking.create_html_report import create_html_report
 from eval_recipes.benchmarking.docker_manager import DockerManager
 from eval_recipes.benchmarking.filters import apply_filters
 from eval_recipes.benchmarking.reporting import generate_summary_report, generate_task_report
-from eval_recipes.benchmarking.schemas import AgentConfig, TaskConfig, TaskInfo, TestResult
+from eval_recipes.benchmarking.schemas import AgentConfig, AggregatedTaskResult, TaskConfig, TaskInfo, TrialResult
 
 
 class Harness:
@@ -29,6 +30,7 @@ class Harness:
         agent_filters: list[str] | None = None,
         task_filters: list[str] | None = None,
         max_parallel_tasks: int = 5,
+        num_trials: int = 1,
     ) -> None:
         """
         Initialize the benchmark harness.
@@ -42,6 +44,7 @@ class Harness:
             agent_filters: Optional list of filter strings for agents (e.g., ['name=claude_code'])
             task_filters: Optional list of filter strings for tasks (e.g., ['difficulty=medium'])
             max_parallel_tasks: Maximum number of tasks to run in parallel
+            num_trials: Number of times to run each task
         """
         repo_root = Path(__file__).parents[2]
         self.agents_dir = agents_dir or repo_root / "data" / "agents"
@@ -58,6 +61,7 @@ class Harness:
         self.agent_filters = agent_filters
         self.task_filters = task_filters
         self.max_parallel_tasks = max_parallel_tasks
+        self.num_trials = num_trials
 
     def _load_agents(self) -> list[AgentConfig]:
         """
@@ -195,14 +199,56 @@ class Harness:
                 files[str(relative_path)] = file_path.read_bytes()
         return files
 
+    def _aggregate_trial_results(
+        self, trials: list[TrialResult], task_name: str, agent_name: str
+    ) -> AggregatedTaskResult:
+        """
+        Aggregate results from multiple trials.
+
+        Args:
+            trials: List of TrialResult objects
+            task_name: Name of the task
+            agent_name: Name of the agent
+
+        Returns:
+            AggregatedTaskResult with statistics
+        """
+        scores = [trial.score for trial in trials]
+        num_trials = len(scores)
+
+        mean_score = statistics.mean(scores)
+        median_score = statistics.median(scores)
+        std_dev = statistics.stdev(scores) if num_trials > 1 else 0.0
+        min_score = min(scores)
+        max_score = max(scores)
+        num_perfect_trials = sum(1 for s in scores if s == 100.0)
+
+        return AggregatedTaskResult(
+            task_name=task_name,
+            agent_name=agent_name,
+            num_trials=num_trials,
+            trials=trials,
+            mean_score=mean_score,
+            median_score=median_score,
+            std_dev=std_dev,
+            min_score=min_score,
+            max_score=max_score,
+            num_perfect_trials=num_perfect_trials,
+        )
+
     def _run_tests(
-        self, container: Any, task: TaskConfig, run_dir: Path, docker_manager: DockerManager
-    ) -> TestResult | None:
+        self,
+        container: Any,
+        task: TaskConfig,
+        run_dir: Path,
+        docker_manager: DockerManager,
+        trial_number: int,
+    ) -> TrialResult | None:
         """Run test script in container and return results."""
         try:
             # Generate unique test ID - this is to make sure we can identify result files uniquely in the container
             test_id = str(uuid.uuid4())
-            logger.info(f"Running tests with ID: {test_id}")
+            logger.info(f"Running tests (trial {trial_number}) with ID: {test_id}")
 
             # Initialize /project as a uv project
             logger.info("Initializing /project as a uv project")
@@ -282,25 +328,27 @@ class Harness:
             result_output = docker_manager.read_file_from_container(container, result_file_path)
             if result_output:
                 result_data = json.loads(result_output)
-                test_result = TestResult(
+                trial_result = TrialResult(
+                    trial_number=trial_number,
                     score=result_data["score"],
                     metadata=result_data.get("metadata", {}),
                     test_output=full_output,
                 )
                 results_file = run_dir / "test_results.json"
                 results_file.write_text(json.dumps(result_data, indent=2))
-                logger.info(f"Test score: {test_result.score}, metadata: {test_result.metadata}")
-                return test_result
+                logger.info(f"Test score: {trial_result.score}, metadata: {trial_result.metadata}")
+                return trial_result
             else:
                 logger.warning(f"Could not read results file: {result_file_path}")
                 # Fallback: return score 0 with error metadata
                 result_data = {"score": 0, "metadata": {"error": "No results file found"}}
-                test_result = TestResult(
+                trial_result = TrialResult(
+                    trial_number=trial_number,
                     score=0,
                     metadata=result_data["metadata"],
                     test_output=full_output,
                 )
-                return test_result
+                return trial_result
         except Exception as e:
             logger.error(f"Failed to run tests: {e}")
             return None
@@ -309,17 +357,17 @@ class Harness:
         self, agent: AgentConfig, task: TaskConfig
     ) -> tuple[Path, Path, str] | tuple[None, None, str]:
         """
-        Synchronous implementation of running a single task.
+        Synchronous implementation of running a single task with multiple trials.
 
         Args:
             agent: Agent configuration
             task: Task configuration
 
         Returns:
-            Tuple of (run_dir, task_dir_path, task_name) if successful, (None, None, task_name) otherwise
+            Tuple of (base_run_dir, task_dir_path, task_name) if successful, (None, None, task_name) otherwise
         """
         task_name = f"{agent.name} on {task.name}"
-        logger.info(f"Running agent '{agent.name}' on task '{task.name}'")
+        logger.info(f"Running agent '{agent.name}' on task '{task.name}' with {self.num_trials} trial(s)")
 
         valid, missing_vars = self._validate_required_env_vars(agent, task)
         if not valid:
@@ -329,39 +377,76 @@ class Harness:
             )
             return None, None, task_name
 
-        run_dir = self.runs_dir / f"{agent.name}_{task.name}"
-        run_dir.mkdir(parents=True, exist_ok=True)
-
-        # Find the task directory for this task
+        # Create base directory for this agent-task pair
+        base_run_dir = self.runs_dir / f"{agent.name}_{task.name}"
+        base_run_dir.mkdir(parents=True, exist_ok=True)
         task_dir_path = self.tasks_dir / task.name
 
-        container_env = self._get_container_env_vars(agent, task)
-        dockerfile_content = self._build_dockerfile(agent, task)
-        image_tag = f"benchmark-{agent.name}-{task.name}".lower()
-        with DockerManager(
-            log_dir=run_dir, dockerfile=dockerfile_content, image_tag=image_tag, container_env=container_env
-        ) as docker_manager:
-            assert docker_manager.container is not None
-            logger.info(f"Built image: {docker_manager.actual_image_tag}")
-            logger.info(f"Container {docker_manager.container_id} started")
+        trial_results: list[TrialResult] = []
+        for trial_num in range(1, self.num_trials + 1):
+            logger.info(f"Starting trial {trial_num}/{self.num_trials} for {task_name}")
+            trial_dir = base_run_dir / f"trial_{trial_num}"
+            trial_dir.mkdir(parents=True, exist_ok=True)
 
-            # Create command to run agent
-            # Escape task instructions to prevent bash injection and parsing errors
-            escaped_instructions = escape_bash_string(task.instructions)
-            command_template = Template(agent.command_template)
-            command = command_template.render(task_instructions=escaped_instructions)
-            logger.info(f"Executing command: {command}")
+            container_env = self._get_container_env_vars(agent, task)
+            dockerfile_content = self._build_dockerfile(agent, task)
+            image_tag = f"benchmark-{agent.name}-{task.name}-trial{trial_num}".lower()
 
-            _exec_result, _exec_logs = docker_manager.exec_command(
-                container=docker_manager.container,
-                command=["bash", "-c", command],
-                log_filename="agent_output.log",
+            with DockerManager(
+                log_dir=trial_dir, dockerfile=dockerfile_content, image_tag=image_tag, container_env=container_env
+            ) as docker_manager:
+                assert docker_manager.container is not None
+                logger.info(f"Built image: {docker_manager.actual_image_tag}")
+                logger.info(f"Container {docker_manager.container_id} started for trial {trial_num}")
+
+                # Create command to run agent
+                escaped_instructions = escape_bash_string(task.instructions)
+                command_template = Template(agent.command_template)
+                command = command_template.render(task_instructions=escaped_instructions)
+                logger.info(f"Executing command for trial {trial_num}: {command}")
+
+                _exec_result, _exec_logs = docker_manager.exec_command(
+                    container=docker_manager.container,
+                    command=["bash", "-c", command],
+                    log_filename="agent_output.log",
+                )
+                logger.info(
+                    f"Trial {trial_num} command execution completed. Output saved to: {trial_dir / 'agent_output.log'}"
+                )
+
+                # Run tests for this trial
+                trial_result = self._run_tests(docker_manager.container, task, trial_dir, docker_manager, trial_num)
+
+                # Add trial result to list
+                if trial_result:
+                    trial_results.append(trial_result)
+                    logger.info(f"Trial {trial_num} completed with score: {trial_result.score}")
+                else:
+                    logger.warning(f"Trial {trial_num} failed to produce results")
+                    # Create a failed trial result
+                    failed_trial_result = TrialResult(
+                        trial_number=trial_num,
+                        score=0.0,
+                        metadata={"error": "Test execution failed"},
+                        test_output="",
+                    )
+                    trial_results.append(failed_trial_result)
+
+        if trial_results:
+            aggregated_result = self._aggregate_trial_results(trial_results, task.name, agent.name)
+
+            # Write aggregated results to base directory
+            aggregated_file = base_run_dir / "aggregated_results.json"
+            aggregated_file.write_text(aggregated_result.model_dump_json(indent=2))
+            logger.info(
+                f"Aggregated results for {task_name}: mean={aggregated_result.mean_score:.1f}%, "
+                f"std_dev={aggregated_result.std_dev:.1f}%, range=[{aggregated_result.min_score:.1f}%, {aggregated_result.max_score:.1f}%]"
             )
-            logger.info(f"Command execution completed. Output saved to: {run_dir / 'agent_output.log'}")
+        else:
+            logger.error(f"No trial results collected for {task_name}")
+            return None, None, task_name
 
-            self._run_tests(docker_manager.container, task, run_dir, docker_manager)
-
-        return (run_dir, task_dir_path, task_name)
+        return (base_run_dir, task_dir_path, task_name)
 
     async def _run_single_task(
         self, agent: AgentConfig, task: TaskConfig, progress: Progress | None = None, task_id: TaskID | None = None
@@ -397,30 +482,18 @@ class Harness:
         Generate a failure report for a single task.
 
         Args:
-            run_dir: Directory containing task execution outputs
+            run_dir: Directory containing task execution outputs (base directory for all trials)
             task_dir_path: Directory containing task definition
             semaphore: Semaphore to limit concurrent report generation
             progress: Optional Rich progress instance for tracking
             task_id: Optional progress task ID for updating
         """
-        test_results_path = run_dir / "test_results.json"
-        if not test_results_path.exists():
-            if progress and task_id is not None:
-                progress.update(task_id, advance=1)
-            return
-
-        with test_results_path.open() as f:
-            test_data = json.load(f)
-            score = test_data.get("score", 0.0)
-
-        # Only generate reports for failed tasks
-        if score < 100.0:
-            logger.info(f"Generating failure report for {run_dir.name}...")
-            async with semaphore:
-                try:
-                    await generate_task_report(run_dir, task_dir_path)
-                except Exception as e:
-                    logger.error(f"Failed to generate report for {run_dir.name}: {e}")
+        logger.info(f"Generating failure report for {run_dir.name}...")
+        async with semaphore:
+            try:
+                await generate_task_report(run_dir, task_dir_path)
+            except Exception as e:
+                logger.error(f"Failed to generate report for {run_dir.name}: {e}")
 
         # Update progress if provided
         if progress and task_id is not None:
@@ -512,8 +585,8 @@ def escape_bash_string(text: str) -> str:
     """
     Escape special characters in a string for safe use in bash commands.
     """
-    text = text.replace("\\", "\\\\")  # Escape backslashes
-    text = text.replace('"', '\\"')  # Escape double quotes
-    text = text.replace("`", "\\`")  # Escape backticks (command substitution)
-    text = text.replace("$", "\\$")  # Escape dollar signs (variable expansion)
+    text = text.replace("\\", "\\\\")
+    text = text.replace('"', '\\"')
+    text = text.replace("`", "\\`")
+    text = text.replace("$", "\\$")
     return text

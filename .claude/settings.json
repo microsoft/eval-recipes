@@ -3,8 +3,11 @@
     "allow": [
       "mcp__ide__getDiagnostics",
       "Bash(make:*)",
+      "Bash(tree:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
       "WebSearch",
-      "Fetch"
+      "WebFetch"
     ],
     "deny": [],
     "ask": []

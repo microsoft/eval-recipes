@@ -1,4 +1,4 @@
-Create me a CLI tool that will take bullet points or rough notes about what I want to communicate and draft an email in my communication style. Place all the code under the directory scenarios/email_drafting. This tool should use the Claude Agent SDK for all of the necessary LLM interactions (you have an ANTHROPIC_API_KEY env var set up already).
+Create me a CLI tool that will take bullet points or rough notes about what I want to communicate and draft an email in my communication style. Place all the code under the directory scenarios/email_drafting. This tool should use the Claude Code or Agent SDK in Python for all of the necessary LLM interactions (you have an ANTHROPIC_API_KEY env var set up already).
 
 I should be able to point to a directory of my past emails for it to use to understand my tone, formality level, and communication patterns, and then also a source document that contains my key points or rough notes for this email. The tool should support an optional recipient parameter - when provided, it should prioritize past emails to/from that specific recipient to better match how I communicate with them.
 

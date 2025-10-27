@@ -3,4 +3,7 @@ required_env_vars:
 task_info:
   difficulty: hard
   non_deterministic_evals: true
+  categories:
+    - cli_tool
+    - software_engineering_tools
 test_command: uv run --no-project /project/test.py

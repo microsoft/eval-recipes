@@ -16,6 +16,7 @@ class AgentConfig(BaseModel):
 class TaskInfo(BaseModel):
     difficulty: Literal["easy", "medium", "hard"]
     non_deterministic_evals: bool = False  # Whether the task evaluations are non-deterministic
+    categories: list[str] = []  # Category tags for the task like "finance"
 
 
 class TaskConfig(BaseModel):
@@ -30,13 +31,39 @@ class TaskConfig(BaseModel):
     task_info: TaskInfo
 
 
-class TestResult(BaseModel):
+class TrialResult(BaseModel):
+    trial_number: int
     score: float
     metadata: dict[str, Any] = {}
-    test_output: str  # Full output from test execution
+    test_output: str
 
     @field_validator("score")
     @classmethod
     def validate_score(cls, v: float) -> float:
         """Clamp score to 0-100 range."""
         return max(0.0, min(100.0, v))
+
+
+class AggregatedTaskResult(BaseModel):
+    task_name: str
+    agent_name: str
+    num_trials: int
+    trials: list[TrialResult]
+    mean_score: float
+    median_score: float
+    std_dev: float
+    min_score: float
+    max_score: float
+    num_perfect_trials: int  # How many trials got 100%
+
+    @field_validator("mean_score", "median_score", "min_score", "max_score")
+    @classmethod
+    def validate_scores(cls, v: float) -> float:
+        """Clamp scores to 0-100 range."""
+        return max(0.0, min(100.0, v))
+
+    @field_validator("std_dev")
+    @classmethod
+    def validate_std_dev(cls, v: float) -> float:
+        """Ensure std_dev is non-negative."""
+        return max(0.0, v)

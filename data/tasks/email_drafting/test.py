@@ -18,14 +18,14 @@ from eval_recipes.benchmarking.test_utils import (
 # Define Semantic Test 1
 
 STEPS_1_CLAUDE_AGENT_SDK_DEPENDENCY = """1. Explore the code that the agent generated in this project directory to see if it uses \
-the Claude Agent SDK (claude-agent-sdk for Python, @anthropic-ai/claude-agent-sdk for TypeScript). \
+the Claude Code or Agent SDK (Ex. claude-code-sdk or claude-agent-sdk for Python). \
 More info is at https://docs.claude.com/en/api/agent-sdk/overview if you need it.
 2. Look for where dependencies are defined (e.g., pyproject.toml, requirements.txt, package.json, etc.)
 3. Check which dependencies are being imported and actually used in the code to create the email drafting solution."""
 
 RUBRIC_1_CLAUDE_AGENT_SDK_DEPENDENCY = {
     "justification": "str - explanation of if the agent used the correct dependency",
-    "score": "float - Score 100 if the agent's solution uses the Claude Agent SDK (claude-agent-sdk). Score 0 otherwise.",
+    "score": "float - Score 100 if the agent's solution uses the Claude Code or Agent SDK (claude-code-sdk or claude-agent-sdk). Score 0 otherwise.",
 }
 
 # Define Semantic Test 2
