@@ -113,3 +113,32 @@ def test_container_env_variables(tmp_path: Path) -> None:
         # Verify environment variable is set
         _exec_result, logs = manager.exec_command(manager.container, ["bash", "-c", "echo $TEST_VAR"])
         assert "test_value" in logs
+
+
+def test_exec_command_timeout(tmp_path: Path) -> None:
+    """Test that exec_command respects timeout and logs timeout message."""
+    log_dir = tmp_path / "logs"
+
+    dockerfile = """FROM ubuntu:24.04
+"""
+    with DockerManager(log_dir=log_dir, dockerfile=dockerfile) as manager:
+        assert manager.container is not None
+
+        # Execute a command that sleeps longer than timeout
+        exec_result, logs = manager.exec_command(
+            container=manager.container,
+            command=["sleep", "60"],
+            log_filename="timeout_test.log",
+            timeout=25,  # 25 seconds
+        )
+
+        # Verify timeout occurred
+        assert exec_result.exit_code == 124  # Timeout exit code
+        assert "timed out after" in logs
+        assert "25" in logs or "0.4" in logs  # Should mention timeout duration
+
+        # Verify log file contains timeout message
+        log_file = log_dir / "timeout_test.log"
+        assert log_file.exists()
+        log_content = log_file.read_text()
+        assert "timed out after" in log_content

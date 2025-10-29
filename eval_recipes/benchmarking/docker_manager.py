@@ -5,6 +5,7 @@ from io import BytesIO
 from pathlib import Path
 import re
 import tarfile
+import threading
 import uuid
 
 import docker
@@ -182,7 +183,12 @@ class DockerManager:
             return False
 
     def exec_command(
-        self, container: Container, command: str | list[str], log_filename: str | None = None, **kwargs
+        self,
+        container: Container,
+        command: str | list[str],
+        log_filename: str | None = None,
+        timeout: int = 180,
+        **kwargs,
     ) -> tuple[ExecResult, str]:
         """
         Executes a command in a running container.
@@ -191,12 +197,15 @@ class DockerManager:
             container: The container to execute the command in
             command: Command to execute (string or list of strings)
             log_filename: Optional name for the log file. If None, auto-generates from command.
+            timeout: Timeout in seconds (default: 180 seconds). If the command exceeds this
+                    duration, it will be terminated and a timeout message will be logged.
             **kwargs: Additional keyword arguments for exec_create (e.g., workdir, environment, user)
                      or exec_start (e.g., socket). Supported exec_create params: stdout, stderr, stdin,
                      tty, privileged, user, environment, workdir.
 
         Returns:
             A tuple containing the ExecResult and the logs from the execution.
+            If timeout occurs, exit_code will be 124 and output will contain timeout message.
         """
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -231,25 +240,58 @@ class DockerManager:
         stream_params.update(kwargs)
         output_stream = client.api.exec_start(exec_id, **stream_params)
 
-        # Stream output to file and collect logs
+        # Stream output to file and collect logs with timeout
+        # Use threading to handle timeout for blocking streams
         complete_logs = ""
-        with log_file.open("wb") as f:
-            for chunk in output_stream:
-                if chunk:
-                    if isinstance(chunk, tuple):
-                        # demux=True returns (stdout, stderr) tuples
-                        stdout, stderr = chunk
-                        if stdout:
-                            f.write(stdout)
-                            complete_logs += stdout.decode("utf-8", errors="ignore")
-                        if stderr:
-                            f.write(stderr)
-                            complete_logs += stderr.decode("utf-8", errors="ignore")
-                    else:
-                        f.write(chunk)
-                        complete_logs += chunk.decode("utf-8", errors="ignore")
+        stream_exception = None
 
-        # Get exit code after stream completes
+        def read_stream():
+            nonlocal complete_logs, stream_exception
+            try:
+                with log_file.open("wb") as f:
+                    for chunk in output_stream:
+                        if chunk:
+                            if isinstance(chunk, tuple):
+                                # demux=True returns (stdout, stderr) tuples
+                                stdout, stderr = chunk
+                                if stdout:
+                                    f.write(stdout)
+                                    complete_logs += stdout.decode("utf-8", errors="ignore")
+                                if stderr:
+                                    f.write(stderr)
+                                    complete_logs += stderr.decode("utf-8", errors="ignore")
+                            else:
+                                f.write(chunk)
+                                complete_logs += chunk.decode("utf-8", errors="ignore")
+            except Exception as e:
+                stream_exception = e
+
+        # Start stream reading in a separate thread
+        stream_thread = threading.Thread(target=read_stream)
+        stream_thread.daemon = True
+        stream_thread.start()
+
+        # Wait for stream thread with timeout
+        stream_thread.join(timeout=timeout)
+
+        # Check if thread is still alive (timeout occurred)
+        if stream_thread.is_alive():
+            command_str = " ".join(command) if isinstance(command, list) else command
+            timeout_msg = f"Command {command_str} timed out after {timeout / 60:.1f} minutes\n"
+
+            # Append timeout message to log file
+            with log_file.open("ab") as f:
+                f.write(timeout_msg.encode("utf-8"))
+            complete_logs += timeout_msg
+
+            exec_result = ExecResult(exit_code=124, output=complete_logs)
+            return (exec_result, complete_logs)
+
+        # Check if there was an exception in the stream thread
+        if stream_exception:
+            raise stream_exception
+
+        # Get exit code after stream completes (non-timeout case)
         exec_info = client.api.exec_inspect(exec_id)
         exit_code = exec_info["ExitCode"]
 

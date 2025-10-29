@@ -1,0 +1,28 @@
+databases = rainforests?
+
+thinking about controlled burns. forest rangers do small fires regularly so you don't get megafires later. we don't do this with databases at all
+
+we just accumulate everything. unused indexes, stale data, old tables from experiments, deprecated columns "just in case"
+
+why are we so scared of deletion? "what if we need it someday" - but accumulation is also risky! slow queries, nobody knows what's actually used anymore
+
+that project last year - 200 tables, team could only name like 30 we actually used. took months to figure out what was safe to remove.
+
+what if we just... deleted stuff regularly? planned deprecation cycles. sunset dates. make it normal not scary.
+
+metaphor: old growth forests vs new forests vs managed forests
+legacy systems = can't do aggressive burns
+startups = can prune aggressively
+modern systems = built with deletion in mind from start
+
+invasive species = duplicate data spreading everywhere
+canopy layers = abstraction layers (stretch?)
+
+counterpoint - yes audit logs live forever. not saying delete everything. saying deletion should be as normal as creation. we're good at adding, terrible at removing
+
+look up: forest management research, controlled burns preventing catastrophic fires
+also maybe stripe api versioning as example of aggressive deprecation done well?
+database index bloat performance impact
+loss aversion psychology applied to data retention
+
+end question: what if growth AND clearing are both part of healthy cycle?

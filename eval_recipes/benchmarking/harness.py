@@ -31,6 +31,7 @@ class Harness:
         task_filters: list[str] | None = None,
         max_parallel_tasks: int = 5,
         num_trials: int = 1,
+        eval_recipes_version: str = "0.0.9",
     ) -> None:
         """
         Initialize the benchmark harness.
@@ -45,6 +46,7 @@ class Harness:
             task_filters: Optional list of filter strings for tasks (e.g., ['difficulty=medium'])
             max_parallel_tasks: Maximum number of tasks to run in parallel
             num_trials: Number of times to run each task
+            eval_recipes_version: Version of eval_recipes to install from GitHub for testing (default: "0.0.9")
         """
         repo_root = Path(__file__).parents[2]
         self.agents_dir = agents_dir or repo_root / "data" / "agents"
@@ -62,6 +64,8 @@ class Harness:
         self.task_filters = task_filters
         self.max_parallel_tasks = max_parallel_tasks
         self.num_trials = num_trials
+
+        self.eval_recipes_version = eval_recipes_version
 
     def _load_agents(self) -> list[AgentConfig]:
         """
@@ -259,34 +263,11 @@ class Harness:
                 workdir="/project",
             )
 
-            # Copy eval_recipes project (including pyproject.toml) to container
-            project_root = Path(__file__).parents[2]  # Repository root
-            project_files_to_copy = ["pyproject.toml", "uv.lock", "README.md"]
-            eval_recipes_files: dict[str, bytes] = {}
-
-            # Copy specific project files with eval_recipes_src/ prefix
-            for file_name in project_files_to_copy:
-                file_path = project_root / file_name
-                if file_path.exists():
-                    eval_recipes_files[f"eval_recipes_src/{file_name}"] = file_path.read_bytes()
-
-            # Copy all eval_recipes package files with eval_recipes_src/ prefix
-            eval_recipes_dir = project_root / "eval_recipes"
-            package_files = self._collect_directory_files(eval_recipes_dir)
-            for relative_path, content in package_files.items():
-                eval_recipes_files[f"eval_recipes_src/eval_recipes/{relative_path}"] = content
-
-            if eval_recipes_files:
-                docker_manager.copy_files_to_container(
-                    container=container,
-                    files=eval_recipes_files,
-                    dest_path="/project",
-                )
-
-            # Add eval_recipes as an editable dependency to /project
-            _exec_result, _add_output = docker_manager.exec_command(
+            # Add eval_recipes from GitHub as a Git dependency
+            git_url = f"git+https://github.com/microsoft/eval-recipes@v{self.eval_recipes_version}"
+            docker_manager.exec_command(
                 container=container,
-                command=["uv", "add", "--editable", "./eval_recipes_src"],
+                command=["uv", "add", git_url],
                 log_filename="uv_add_eval_recipes_output.log",
                 workdir="/project",
             )
@@ -316,6 +297,7 @@ class Harness:
                 container=container,
                 command=["uv", "run", "test.py"],
                 log_filename="test_output.log",
+                timeout=1800,
                 environment={
                     "EVAL_RECIPES_TEST_ID": test_id,
                 },
@@ -409,6 +391,7 @@ class Harness:
                     container=docker_manager.container,
                     command=["bash", "-c", command],
                     log_filename="agent_output.log",
+                    timeout=1800,
                 )
                 logger.info(
                     f"Trial {trial_num} command execution completed. Output saved to: {trial_dir / 'agent_output.log'}"
