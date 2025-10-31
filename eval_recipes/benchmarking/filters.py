@@ -7,27 +7,35 @@ from pydantic import BaseModel
 T = TypeVar("T", bound=BaseModel)
 
 
-def parse_filter(filter_str: str) -> tuple[str, list[str]]:
+def parse_filter(filter_str: str) -> tuple[str, list[str], bool]:
     """
-    Parse a filter string like 'field=value1,value2' into field path and values.
+    Parse a filter string like 'field=value1,value2' or 'field!=value' into field path, values, and negation flag.
 
     Args:
-        filter_str: Filter string in format 'field=value' or 'field=value1,value2'
+        filter_str: Filter string in format 'field=value', 'field=value1,value2', or 'field!=value'
 
     Returns:
-        Tuple of (field_path, list_of_values)
+        Tuple of (field_path, list_of_values, is_negation)
 
     Examples:
         >>> parse_filter('name=claude_code')
-        ('name', ['claude_code'])
+        ('name', ['claude_code'], False)
         >>> parse_filter('task_info.difficulty=easy,medium')
-        ('task_info.difficulty', ['easy', 'medium'])
+        ('task_info.difficulty', ['easy', 'medium'], False)
+        >>> parse_filter('name!=sec_10q_extractor')
+        ('name', ['sec_10q_extractor'], True)
     """
-    if "=" not in filter_str:
-        raise ValueError(f"Invalid filter format: '{filter_str}'. Expected 'field=value' or 'field=value1,value2'")
-    field_path, values_str = filter_str.split("=", 1)
-    values = [v.strip() for v in values_str.split(",")]
-    return field_path.strip(), values
+    # Check for negation operator first
+    if "!=" in filter_str:
+        field_path, values_str = filter_str.split("!=", 1)
+        values = [v.strip() for v in values_str.split(",")]
+        return field_path.strip(), values, True
+    elif "=" in filter_str:
+        field_path, values_str = filter_str.split("=", 1)
+        values = [v.strip() for v in values_str.split(",")]
+        return field_path.strip(), values, False
+    else:
+        raise ValueError(f"Invalid filter format: '{filter_str}'. Expected 'field=value' or 'field!=value'")
 
 
 def get_nested_field(obj: BaseModel, field_path: str) -> Any:
@@ -68,10 +76,11 @@ def apply_filters(items: list[T], filters: list[str]) -> list[T]:
 
     Multiple filters use AND logic (all must match).
     Comma-separated values within a filter use OR logic (any can match).
+    Negation filters (using !=) exclude items matching the specified values.
 
     Args:
         items: List of Pydantic model instances
-        filters: List of filter strings like ['name=value', 'field=value1,value2']
+        filters: List of filter strings like ['name=value', 'field=value1,value2', 'name!=excluded_value']
 
     Returns:
         Filtered list where each item matches ALL filters
@@ -83,15 +92,21 @@ def apply_filters(items: list[T], filters: list[str]) -> list[T]:
         >>> apply_filters(tasks, ['name=task1,task2'])
         >>> # Multiple filters (AND logic)
         >>> apply_filters(tasks, ['difficulty=medium', 'task_info.non_deterministic_evals=true'])
+        >>> # Negation filter (exclude items)
+        >>> apply_filters(tasks, ['name!=sec_10q_extractor'])
     """
     if not filters:
         return items
 
     filtered_items = items.copy()
     for filter_str in filters:
-        field_path, allowed_values = parse_filter(filter_str)
-        # Filter items - keep only those where the field value matches any allowed value
-        filtered_items = [item for item in filtered_items if _matches_filter(item, field_path, allowed_values)]
+        field_path, allowed_values, is_negation = parse_filter(filter_str)
+        if is_negation:
+            # Exclusion: keep items that DO NOT match any of the values
+            filtered_items = [item for item in filtered_items if not _matches_filter(item, field_path, allowed_values)]
+        else:
+            # Inclusion: keep items that DO match any of the values
+            filtered_items = [item for item in filtered_items if _matches_filter(item, field_path, allowed_values)]
 
     return filtered_items
 

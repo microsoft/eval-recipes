@@ -12,12 +12,6 @@ install-all:
 	uv lock --upgrade && uv sync --all-extras --all-groups
 
 check:
-ifeq ($(OS),Windows_NT)
 	uv run ruff check --no-cache --fix .
 	uv run ruff format --no-cache .
 	uv run pyright
-else
-	uv run ruff check --no-cache --fix .
-	uv run ruff format --no-cache .
-	uv run pyright
-endif
