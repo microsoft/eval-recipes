@@ -223,3 +223,57 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
+
+
+### Semantic Test
+
+Evaluates agent work by using an AI agent to audit deliverables against custom steps and rubrics.
+The auditor agent explores a working directory, follows specified steps, and completes a structured rubric.
+
+**Metric**: Score extracted from the completed rubric (0-100).
+
+```python
+import asyncio
+from pathlib import Path
+
+from eval_recipes.evaluations.semantic_test.semantic_test_evaluator import (
+    SemanticTestEvaluator,
+    SemanticTestEvaluatorConfig,
+)
+
+async def main() -> None:
+    # Setup: working_dir should contain the agent's deliverables
+    working_dir = Path("/path/to/agent/work")
+
+    context = "Create a Python script that calculates fibonacci numbers using recursion"
+
+    steps = """1. Check if the Python file exists
+1. Read the file and verify it implements fibonacci using recursion
+2. Test the implementation by running it"""
+
+    rubric = {
+        "file_exists": "20 points boolean - does the file exist?",
+        "uses_recursion": "40 points boolean - does it use recursion?",
+        "works_correctly": "40 points boolean - does it produce correct results?",
+        "score": "number (0-100) - total score based on criteria above",
+    }
+
+    config = SemanticTestEvaluatorConfig(
+        working_dir=working_dir,
+        steps=steps,
+        rubric=rubric,
+        context=context,
+    )
+    evaluator = SemanticTestEvaluator(config=config)
+    result = await evaluator.run(
+        working_dir=working_dir,
+        steps=steps,
+        rubric=rubric,
+        context=context,
+    )
+    print(f"Score: {result.score:.1f}")
+    print(f"Feedback: {result.feedback}")
+    print(f"Metadata: {result.metadata}")
+
+asyncio.run(main())
+```

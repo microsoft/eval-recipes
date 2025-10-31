@@ -197,6 +197,8 @@ cp .env.sample .env
 
 This library requires either OpenAI or Azure OpenAI to be configured. You must set the correct environment variables in the `.env` file.
 
+The `semantic_test` evaluator additionally requires `ANTHROPIC_API_KEY` to be set, as it uses the Claude Agent SDK.
+
 Check [utils.py `create_client`](./eval_recipes/utils/llm.py) to troubleshoot any configuration issues.
 
 ### Other

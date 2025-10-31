@@ -31,7 +31,7 @@ class Harness:
         task_filters: list[str] | None = None,
         max_parallel_tasks: int = 5,
         num_trials: int = 1,
-        eval_recipes_version: str = "0.0.11",
+        eval_recipes_version: str = "0.0.12",
     ) -> None:
         """
         Initialize the benchmark harness.
@@ -46,7 +46,7 @@ class Harness:
             task_filters: Optional list of filter strings for tasks (e.g., ['difficulty=medium'])
             max_parallel_tasks: Maximum number of tasks to run in parallel
             num_trials: Number of times to run each task
-            eval_recipes_version: Version of eval_recipes to install from GitHub for testing (default: "0.0.11")
+            eval_recipes_version: Version of eval_recipes to install from GitHub for testing
         """
         repo_root = Path(__file__).parents[2]
         self.agents_dir = agents_dir or repo_root / "data" / "agents"
