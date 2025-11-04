@@ -538,6 +538,17 @@ For each agent-task pair that scores below 85%, a report is generated that analy
 Finally, these individual reports are rolled up into a final report for each agent.
 
 
+## Prerequisites
+
+- [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- [Docker](https://docs.docker.com/engine/install/ubuntu/)
+  - After installing, ensure your user has docker permissions by running:
+    - `sudo usermod -aG docker $USER`
+    - `newgrp docker`
+- Claude Agent SDK which requires [Claude Code](https://docs.claude.com/en/docs/claude-code/overview)
+- ANTHROPIC_API_KEY for the Claude Agent SDK.
+
+
 ## Running Benchmarks
 
 The benchmarking harness is available via the CLI script `scripts/run_benchmarks.py`.
@@ -545,10 +556,7 @@ The benchmarking harness is available via the CLI script `scripts/run_benchmarks
 ### Basic Usage
 
 ```bash
-# The default agents/tasks require these environment variables
-export ANTHROPIC_API_KEY=your_anthropic_key
-export OPENAI_API_KEY=your_openai_key
-
+# Make sure your .env file is setup according to .env.sample
 # Run all agents on all tasks, by default this will use the existing data/agents/ and data/tasks/ directories
 uv run scripts/run_benchmarks.py --max-parallel-tasks 3
 
@@ -814,16 +822,16 @@ load_dotenv()
     "agent_filters",
     multiple=True,
     default=(),
-    help="Filter agents by field. Format: field=value or field=value1,value2. "
-    "Can specify multiple times (AND logic). Examples: name=claude_code",
+    help="Filter agents by field. Format: field=value or field=value1,value2 or field!=value (negation). "
+    "Can specify multiple times (AND logic). Examples: name=claude_code or name!=old_agent",
 )
 @click.option(
     "--task-filter",
     "task_filters",
     multiple=True,
-    default=(),
-    help="Filter tasks by field. Format: field=value or field.nested=value1,value2. "
-    "Can specify multiple times (AND logic). Example: difficulty=medium",
+    default=("name=!sec_10q_extractor",),
+    help="Filter tasks by field. Format: field=value or field.nested=value1,value2 or field!=value (negation). "
+    "Can specify multiple times (AND logic). Examples: difficulty=medium or name!=sec_10q_extractor",
 )
 @click.option(
     "--generate-reports",
@@ -834,7 +842,7 @@ load_dotenv()
 @click.option(
     "--max-parallel-tasks",
     type=int,
-    default=5,
+    default=1,
     help="Maximum number of tasks to run in parallel",
 )
 @click.option(
@@ -861,6 +869,8 @@ def main(
         environment={
             "ANTHROPIC_API_KEY": os.environ["ANTHROPIC_API_KEY"],
             "OPENAI_API_KEY": os.environ["OPENAI_API_KEY"],
+            "GITHUB_TOKEN": os.environ.get("GITHUB_TOKEN", ""),
+            "AZURE_OPENAI_ENDPOINT": os.environ.get("AZURE_OPENAI_ENDPOINT", ""),
         },
         agent_filters=list(agent_filters) if agent_filters else None,
         task_filters=list(task_filters) if task_filters else None,
