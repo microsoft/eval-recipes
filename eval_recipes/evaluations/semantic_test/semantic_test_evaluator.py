@@ -1,16 +1,20 @@
 # Copyright (c) Microsoft. All rights reserved.
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+from dotenv import load_dotenv
 from liquid import render
 from loguru import logger
 from openai.types.chat.chat_completion_tool_param import ChatCompletionToolParam
 from openai.types.responses import ResponseInputParam
 
 from eval_recipes.schemas import BaseEvaluatorConfig, EvaluationOutput
+
+load_dotenv()
 
 AUDIT_SYSTEM_PROMPT = """You are performing a quality and compliance audit of another AI agent's deliverables. \
 It is of utmost importance that you remain impartial, critical, and objective in your evaluation.
@@ -128,6 +132,7 @@ class SemanticTestEvaluator:
             ],
             permission_mode="acceptEdits",
             cwd=working_dir,
+            env={"ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", "")},
         )
 
         try:

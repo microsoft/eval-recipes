@@ -31,7 +31,7 @@ class Harness:
         task_filters: list[str] | None = None,
         max_parallel_tasks: int = 5,
         num_trials: int = 1,
-        eval_recipes_version: str = "0.0.13",
+        eval_recipes_version: str = "0.0.14",
     ) -> None:
         """
         Initialize the benchmark harness.

@@ -1,14 +1,18 @@
 import inspect
 import json
+import os
 from pathlib import Path
 import shutil
 import tempfile
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+from dotenv import load_dotenv
 from liquid import render
 from loguru import logger
 
 from eval_recipes.benchmarking.semantic_test import semantic_test
+
+load_dotenv()
 
 TASK_REPORT_SYSTEM_PROMPT = """You are an expert at analyzing benchmark task failures. Your goal is to identify WHY an agent failed at a task.
 
@@ -163,6 +167,7 @@ async def generate_task_report(benchmark_output_dir: Path, task_directory: Path)
                 allowed_tools=["Read", "Grep", "Write"],
                 max_turns=30,
                 permission_mode="default",
+                env={"ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", "")},
             )
             messages = []  # store messages for debugging purposes only
             async with ClaudeSDKClient(options=options) as client:
@@ -391,6 +396,7 @@ async def generate_summary_report(benchmarks_output_dir: Path) -> None:
                 allowed_tools=["Write"],
                 max_turns=10,
                 permission_mode="default",
+                env={"ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", "")},
             )
             messages = []
             async with ClaudeSDKClient(options=options) as client:

@@ -11,6 +11,17 @@ For each agent-task pair that scores below 85%, a report is generated that analy
 Finally, these individual reports are rolled up into a final report for each agent.
 
 
+## Prerequisites
+
+- [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- [Docker](https://docs.docker.com/engine/install/ubuntu/)
+  - After installing, ensure your user has docker permissions by running:
+    - `sudo usermod -aG docker $USER`
+    - `newgrp docker`
+- Claude Agent SDK which requires [Claude Code](https://docs.claude.com/en/docs/claude-code/overview)
+- ANTHROPIC_API_KEY for the Claude Agent SDK.
+
+
 ## Running Benchmarks
 
 The benchmarking harness is available via the CLI script `scripts/run_benchmarks.py`.
@@ -18,10 +29,7 @@ The benchmarking harness is available via the CLI script `scripts/run_benchmarks
 ### Basic Usage
 
 ```bash
-# The default agents/tasks require these environment variables
-export ANTHROPIC_API_KEY=your_anthropic_key
-export OPENAI_API_KEY=your_openai_key
-
+# Make sure your .env file is setup according to .env.sample
 # Run all agents on all tasks, by default this will use the existing data/agents/ and data/tasks/ directories
 uv run scripts/run_benchmarks.py --max-parallel-tasks 3
 

@@ -1,13 +1,17 @@
 # Copyright (c) Microsoft. All rights reserved.
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+from dotenv import load_dotenv
 from liquid import render
 from loguru import logger
 from pydantic import BaseModel, field_validator
+
+load_dotenv()
 
 AUDIT_SYSTEM_PROMPT = """You are performing a quality and compliance audit of another AI agent's deliverables. \
 It is of utmost importance that you remain impartial, critical, and objective in your evaluation.
@@ -106,6 +110,7 @@ async def semantic_test(steps: str, rubric: dict[str, Any], context: str, workin
         ],
         permission_mode="acceptEdits",
         cwd=working_dir,
+        env={"ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", "")},
     )
 
     async with ClaudeSDKClient(options=options) as client:
