@@ -1,6 +1,6 @@
 [project]
 name = "eval_recipes"
-version = "0.0.12"
+version = "0.0.13"
 description = "Eval Recipes"
 authors = [{ name = "Semantic Workbench Team" }]
 readme = "README.md"
