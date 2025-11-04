@@ -120,8 +120,8 @@ async def generate_task_report(benchmark_output_dir: Path, task_directory: Path)
     for trial_data in trials_data:
         trial_number = trial_data.get("trial_number")
         trial_score = trial_data.get("score", 0)
-        if trial_score >= 100.0:
-            logger.info(f"Skipping report for trial {trial_number} (perfect score)")
+        if trial_score >= 85.0:
+            logger.info(f"Skipping report for trial {trial_number} (score >= 85%)")
             continue
 
         trial_dir = benchmark_output_dir / f"trial_{trial_number}"
@@ -169,6 +169,20 @@ async def generate_task_report(benchmark_output_dir: Path, task_directory: Path)
                 await client.query(task_report_prompt)
                 async for _message in client.receive_response():
                     messages.append(_message)
+
+                # Check if the report was created at the expected path
+                report_path = temp_dir / "FAILURE_REPORT.md"
+                if not report_path.exists():
+                    logger.warning(
+                        f"Report not found at expected path: {report_path}. Asking agent to verify the location..."
+                    )
+                    await client.query(
+                        f"The report was not found at {report_path}. "
+                        "Can you please double check if it is in the correct location and has the correct file name? "
+                        "The file should be named 'FAILURE_REPORT.md' and placed in the current working directory."
+                    )
+                    async for _message in client.receive_response():
+                        messages.append(_message)
 
             # Get the report from the temp dir and move it to the trial directory
             report_path = temp_dir / "FAILURE_REPORT.md"
@@ -367,6 +381,7 @@ async def generate_summary_report(benchmarks_output_dir: Path) -> None:
             failure_reports.append(f"## Report for Task: {run_dir_name}\n\n{content}\n\n{'=' * 80}\n")
 
         temp_dir = Path(tempfile.mkdtemp(prefix=f"benchmark_consolidated_report_{agent_name}_"))
+        report_path = temp_dir / "CONSOLIDATED_REPORT.md"
         try:
             all_reports = "\n".join(failure_reports)
             consolidated_user_prompt = render(CONSOLIDATED_REPORT_USER_PROMPT, all_reports=all_reports)
@@ -384,8 +399,21 @@ async def generate_summary_report(benchmarks_output_dir: Path) -> None:
                     messages.append(msg)
                     continue
 
+                # Check if the report was created at the expected path
+                if not report_path.exists():
+                    logger.warning(
+                        f"Report not found at expected path: {report_path}. Asking agent to verify the location..."
+                    )
+                    await client.query(
+                        f"The report was not found at {report_path}. "
+                        "Can you please double check if it is in the correct location and has the correct file name? "
+                        "The file should be named 'CONSOLIDATED_REPORT.md' and placed in the current working directory."
+                    )
+                    async for msg in client.receive_response():
+                        messages.append(msg)
+                        continue
+
             # Get the report from the temp dir and move it to the benchmark output dir
-            report_path = temp_dir / "CONSOLIDATED_REPORT.md"
             if report_path.exists():
                 output_path = benchmarks_output_dir / f"CONSOLIDATED_REPORT_{agent_name}.md"
                 shutil.copy2(report_path, output_path)

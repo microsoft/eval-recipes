@@ -230,6 +230,16 @@ def _format_name(name: str) -> str:
     """
     Format a snake_case name for display.
     """
+    # Special case for specific full names
+    name_lower = name.lower()
+    special_names = {
+        "gh_cli": "GitHub CLI",
+        "amplifier_v2": "Amplifier Next",
+        "amplifier_v2_aoai": "Amplifier Next AOAI",
+    }
+    if name_lower in special_names:
+        return special_names[name_lower]
+
     # Split on underscores and capitalize each word
     words = name.split("_")
     formatted_words = []
@@ -858,6 +868,23 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
         .trial-tab-content.active {
             display: block;
         }
+
+        /* Clickable Links */
+        .clickable-link {
+            color: var(--primary);
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .clickable-link:hover {
+            color: #1e40af;
+            text-decoration: underline;
+        }
+
+        .clickable-link:active {
+            color: #1e3a8a;
+        }
     </style>
 </head>
 <body>
@@ -904,6 +931,10 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
     html_parts.append("""
             <button class="tab active" onclick="switchTab(event, 'overview')">Overview</button>""")
 
+    # Generate Tasks tab button
+    html_parts.append("""
+            <button class="tab" onclick="switchTab(event, 'tasks')">Tasks</button>""")
+
     # Generate tabs for each agent (none active since Overview is first)
     for agent_name in sorted(agent_results.keys()):
         formatted_agent_name = _format_agent_name(agent_name)
@@ -949,6 +980,7 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
 
     for agent_data in agent_comparison_data:
         agent_formatted = _format_agent_name(agent_data["name"])
+        agent_id = escape(agent_data["name"])
 
         # Determine best score classes
         avg_class = " best-score" if agent_data["avg_score"] == best_avg else ""
@@ -957,7 +989,7 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
 
         html_parts.append(f"""
                         <tr>
-                            <td>{escape(agent_formatted)}</td>
+                            <td><a href="#" class="clickable-link" onclick="event.preventDefault(); navigateToTab('{agent_id}');">{escape(agent_formatted)}</a></td>
                             <td class="{avg_class}">{agent_data["avg_score"]:.1f}%</td>
                             <td class="{var_class}">±{agent_data["mean_std_dev"]:.1f}%</td>
                             <td class="{cons_class}">{agent_data["consistency_percentage"]:.0f}%</td>
@@ -993,8 +1025,9 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
 
         for agent_name in sorted_agents:
             agent_formatted = _format_agent_name(agent_name)
+            agent_id = escape(agent_name)
             html_parts.append(f"""
-                            <th>{escape(agent_formatted)}</th>""")
+                            <th><a href="#" class="clickable-link" onclick="event.preventDefault(); navigateToTab('{agent_id}');" style="color: inherit; font-weight: 600;">{escape(agent_formatted)}</a></th>""")
 
         html_parts.append("""
                         </tr>
@@ -1048,6 +1081,129 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
                 </div>
                 <div class="collapsible-content">
                     <div id='{overview_consolidated_id}' class="markdown-content tall"></div>
+                </div>""")
+
+    html_parts.append("""
+            </div>
+        </div>""")
+
+    # Generate Tasks tab content
+    # Group tasks by task_name and collect metadata
+    tasks_catalog: dict[str, dict[str, Any]] = {}
+    for result in results:
+        if result.task_name not in tasks_catalog:
+            tasks_catalog[result.task_name] = {
+                "instructions": result.instructions,
+                "task_yaml_data": result.task_yaml_data,
+                "agent_scores": [],
+            }
+        tasks_catalog[result.task_name]["agent_scores"].append({"agent": result.agent_name, "score": result.score})
+
+    html_parts.append("""
+
+        <div class="tab-content" id="tab-tasks">
+            <h1>Benchmark Tasks</h1>
+            <div class="subtitle">All tasks that agents are evaluated on</div>
+
+            <div style="background: var(--surface); padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem; line-height: 1.8;">
+                <p style="margin: 0 0 1rem 0;">
+                    Each task represents a real-world scenario where AI agents are given natural language instructions
+                    and must autonomously complete the objective using available tools and capabilities. Tasks range from
+                    creating CLI applications to document processing and data extraction workflows.
+                </p>
+                <p style="margin: 0 0 1rem 0;">
+                    Agents execute in isolated Docker containers with pre-configured dependencies and are evaluated through
+                    a combination of semantic tests (using a specialized LLM "audit" agent to assess quality) and some deterministic tests where appropriate.
+                    Overall scores range from 0-100%, with higher scores indicating better task completion.
+                    Each task is run multiple times (trials) to measure consistency and reliability.
+                </p>
+            </div>
+
+            <div class="task-list">""")
+
+    # Sort tasks by name
+    for task_name in sorted(tasks_catalog.keys()):
+        task_data = tasks_catalog[task_name]
+        task_info = task_data["task_yaml_data"].get("task_info", {})
+        formatted_task_name = _format_name(task_name)
+        task_id = f"task-catalog-{escape(task_name)}"
+        instructions_id = f"instructions-{task_id}"
+
+        # Store instructions for markdown rendering
+        markdown_content[instructions_id] = task_data["instructions"]
+
+        # Calculate statistics
+        agent_scores = task_data["agent_scores"]
+        num_agents = len(agent_scores)
+        avg_score = sum(s["score"] for s in agent_scores) / num_agents if num_agents > 0 else 0.0
+
+        # Get difficulty and categories
+        difficulty = task_info.get("difficulty", "unknown")
+        categories = task_info.get("categories", [])
+        categories_str = ", ".join(_format_name(cat) for cat in categories) if categories else "None"
+
+        html_parts.append(f"""
+                <div class="task-item" id="{task_id}">
+                    <div class="task-item-header" onclick="toggleTaskDetails(this)">
+                        <div class="task-name">{escape(formatted_task_name)}</div>
+                        <div style="display: flex; align-items: center; gap: 1rem;">
+                            <span style="color: var(--text-muted); font-size: 0.9rem;">{num_agents} agent(s) | Avg: {avg_score:.1f}%</span>
+                        </div>
+                    </div>
+                    <div class="task-details">
+                        <div class="task-detail-section">
+                            <h4 style="margin: 0 0 0.5rem 0;">Metadata</h4>
+                            <div style="display: grid; grid-template-columns: auto 1fr; gap: 0.5rem 1rem; font-size: 0.9rem;">
+                                <strong>Difficulty:</strong>
+                                <span>{escape(difficulty.title())}</span>
+                                <strong>Categories:</strong>
+                                <span>{escape(categories_str)}</span>
+                            </div>
+                        </div>
+                        <div class="task-detail-section">
+                            <div class="nested-collapsible-header" onclick="toggleNestedCollapsible(this)">
+                                <h4>Task Instructions</h4>
+                                <span class="collapsible-icon">▶</span>
+                            </div>
+                            <div class="nested-collapsible-content">
+                                <div id='{instructions_id}' class="markdown-content"></div>
+                            </div>
+                        </div>
+                        <div class="task-detail-section">
+                            <div class="nested-collapsible-header" onclick="toggleNestedCollapsible(this)">
+                                <h4>Agent Performance</h4>
+                                <span class="collapsible-icon">▶</span>
+                            </div>
+                            <div class="nested-collapsible-content">
+                                <table style="width: 100%; border-collapse: collapse;">
+                                    <thead>
+                                        <tr style="border-bottom: 1px solid var(--border);">
+                                            <th style="padding: 0.5rem; text-align: left; font-weight: 600;">Agent</th>
+                                            <th style="padding: 0.5rem; text-align: right; font-weight: 600;">Score</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>""")
+
+        # Sort agents by score descending
+        sorted_agents = sorted(agent_scores, key=lambda x: x["score"], reverse=True)
+        for agent_score in sorted_agents:
+            agent_formatted = _format_agent_name(agent_score["agent"])
+            agent_id = escape(agent_score["agent"])
+            score = agent_score["score"]
+            # Create deep link ID to the specific task within the agent's tab
+            agent_task_id = f"task-{agent_id}-{escape(task_name)}"
+            html_parts.append(f"""
+                                        <tr style="border-bottom: 1px solid var(--border);">
+                                            <td style="padding: 0.5rem;"><a href="#" class="clickable-link" onclick="event.preventDefault(); navigateToTabAndElement('{agent_id}', '{agent_task_id}');">{escape(agent_formatted)}</a></td>
+                                            <td style="padding: 0.5rem; text-align: right; font-weight: 600;">{score:.1f}%</td>
+                                        </tr>""")
+
+        html_parts.append("""
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
                 </div>""")
 
     html_parts.append("""
@@ -1181,13 +1337,14 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
         # Sort tasks by score (ascending)
         sorted_tasks = sorted(agent_tasks, key=lambda t: t.score)
 
-        for task_idx, task in enumerate(sorted_tasks):
-            task_id = f"{agent_id}-task-{task_idx}"
+        for task in sorted_tasks:
+            task_id = f"{agent_id}-{escape(task.task_name)}"
             score_class = (
                 "score-perfect" if task.score == 100.0 else "score-good" if task.score >= 50.0 else "score-poor"
             )
 
             formatted_task_name = _format_name(task.task_name)
+            task_catalog_id = f"task-catalog-{escape(task.task_name)}"
 
             # Format score display with trial statistics
             if task.num_trials > 1:
@@ -1198,11 +1355,15 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
             html_parts.extend(
                 [
                     """
-                <div class="task-item">
+                <div class="task-item" id="task-""",
+                    task_id,
+                    """">
                     <div class="task-item-header" onclick="toggleTaskDetails(this)">
-                        <div class="task-name">""",
+                        <div class="task-name"><a href="#" class="clickable-link" onclick="event.preventDefault(); event.stopPropagation(); navigateToTabAndElement('tasks', '""",
+                    task_catalog_id,
+                    """');">""",
                     escape(formatted_task_name),
-                    """</div>
+                    """</a></div>
                         <div class="task-score """,
                     score_class,
                     """">""",
@@ -1478,6 +1639,99 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
 
             // Add active class to clicked tab
             event.currentTarget.classList.add('active');
+        }}
+
+        // Navigate to a specific tab (agent or tasks)
+        function navigateToTab(tabName) {{
+            // Hide all tab contents
+            const tabContents = document.querySelectorAll('.tab-content');
+            tabContents.forEach(content => {{
+                content.classList.remove('active');
+            }});
+
+            // Remove active class from all tabs
+            const tabs = document.querySelectorAll('.tab');
+            tabs.forEach(tab => {{
+                tab.classList.remove('active');
+            }});
+
+            // Show selected tab content
+            const targetContent = document.getElementById('tab-' + tabName);
+            if (targetContent) {{
+                targetContent.classList.add('active');
+            }}
+
+            // Add active class to the corresponding tab button
+            const tabButtons = document.querySelectorAll('.tab');
+            tabButtons.forEach(tab => {{
+                if (tab.textContent.trim() === tabName || tab.onclick?.toString().includes(tabName)) {{
+                    tab.classList.add('active');
+                }}
+            }});
+        }}
+
+        // Navigate to a specific element and optionally expand it
+        function navigateToElement(elementId, shouldExpand = true) {{
+            const element = document.getElementById(elementId);
+            if (element) {{
+                console.log('Navigating to element:', elementId);
+
+                // If the element is a task-item or inside one, expand its details
+                if (shouldExpand) {{
+                    // Check if this is a task-item or find the closest task-item parent
+                    const taskItem = element.classList.contains('task-item') ? element : element.closest('.task-item');
+                    if (taskItem) {{
+                        console.log('Found task-item:', taskItem.id);
+                        const taskDetails = taskItem.querySelector('.task-details');
+                        if (taskDetails) {{
+                            console.log('Found task-details, open:', taskDetails.classList.contains('open'));
+                            if (!taskDetails.classList.contains('open')) {{
+                                taskDetails.classList.add('open');
+                                console.log('Expanded task-details');
+                            }}
+                        }} else {{
+                            console.log('No task-details found in task-item');
+                        }}
+                    }} else {{
+                        console.log('No task-item found');
+                    }}
+
+                    // Also handle generic collapsible sections
+                    let parent = element.closest('.task-details');
+                    if (parent && !parent.classList.contains('open')) {{
+                        parent.classList.add('open');
+                    }}
+                }}
+
+                // Small delay to let expansion animation complete before scrolling
+                setTimeout(() => {{
+                    // Scroll to the element with smooth behavior
+                    element.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+
+                    // Optional: Add a brief highlight effect
+                    element.style.transition = 'background-color 0.5s';
+                    element.style.backgroundColor = '#fef3c7';
+                    setTimeout(() => {{
+                        element.style.backgroundColor = '';
+                    }}, 1500);
+                }}, 50);
+            }} else {{
+                console.error('Element not found:', elementId);
+            }}
+        }}
+
+        // Combined navigation: switch tab and navigate to element
+        function navigateToTabAndElement(tabName, elementId) {{
+            navigateToTab(tabName);
+            // Delay to ensure tab content is visible before scrolling
+            setTimeout(() => {{
+                const element = document.getElementById(elementId);
+                if (!element) {{
+                    console.error('Element not found:', elementId);
+                    return;
+                }}
+                navigateToElement(elementId);
+            }}, 200);
         }}
 
         // Render all markdown content after page loads

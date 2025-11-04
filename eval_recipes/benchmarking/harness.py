@@ -31,7 +31,7 @@ class Harness:
         task_filters: list[str] | None = None,
         max_parallel_tasks: int = 5,
         num_trials: int = 1,
-        eval_recipes_version: str = "0.0.12",
+        eval_recipes_version: str = "0.0.13",
     ) -> None:
         """
         Initialize the benchmark harness.
@@ -83,6 +83,7 @@ class Harness:
             install_file = agent_dir / "install.dockerfile"
             command_template_file = agent_dir / "command_template.txt"
             agent_yaml_file = agent_dir / "agent.yaml"
+            data_dir = agent_dir / "data"
 
             if not install_file.exists() or not command_template_file.exists() or not agent_yaml_file.exists():
                 continue
@@ -96,6 +97,7 @@ class Harness:
                     required_env_vars=agent_yaml.get("required_env_vars", []),
                     agent_installation=install_file.read_text(),
                     command_template=command_template_file.read_text(),
+                    data_dir=data_dir if data_dir.exists() and data_dir.is_dir() else None,
                 )
             )
 
@@ -380,6 +382,17 @@ class Harness:
                 assert docker_manager.container is not None
                 logger.info(f"Built image: {docker_manager.actual_image_tag}")
                 logger.info(f"Container {docker_manager.container_id} started for trial {trial_num}")
+
+                # Copy agent data directory if it exists
+                if agent.data_dir and agent.data_dir.exists():
+                    logger.info(f"Copying agent data directory from {agent.data_dir} to container")
+                    agent_data_files = self._collect_directory_files(agent.data_dir)
+                    if agent_data_files:
+                        docker_manager.copy_files_to_container(
+                            container=docker_manager.container,
+                            files=agent_data_files,
+                            dest_path="/project",
+                        )
 
                 # Create command to run agent
                 escaped_instructions = escape_bash_string(task.instructions)
