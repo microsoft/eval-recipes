@@ -1,0 +1,2 @@
+required_env_vars:
+  - AZURE_OPENAI_ENDPOINT

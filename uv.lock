@@ -723,7 +723,7 @@ wheels = [
 
 [[package]]
 name = "eval-recipes"
-version = "0.0.12"
+version = "0.0.14"
 source = { editable = "." }
 dependencies = [
     { name = "azure-core", extra = ["aio"] },

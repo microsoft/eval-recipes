@@ -38,16 +38,16 @@ load_dotenv()
     "agent_filters",
     multiple=True,
     default=(),
-    help="Filter agents by field. Format: field=value or field=value1,value2. "
-    "Can specify multiple times (AND logic). Examples: name=claude_code",
+    help="Filter agents by field. Format: field=value or field=value1,value2 or field!=value (negation). "
+    "Can specify multiple times (AND logic). Examples: name=claude_code or name!=old_agent",
 )
 @click.option(
     "--task-filter",
     "task_filters",
     multiple=True,
-    default=(),
-    help="Filter tasks by field. Format: field=value or field.nested=value1,value2. "
-    "Can specify multiple times (AND logic). Example: difficulty=medium",
+    default=("name=!sec_10q_extractor",),
+    help="Filter tasks by field. Format: field=value or field.nested=value1,value2 or field!=value (negation). "
+    "Can specify multiple times (AND logic). Examples: difficulty=medium or name!=sec_10q_extractor",
 )
 @click.option(
     "--generate-reports",
@@ -58,7 +58,7 @@ load_dotenv()
 @click.option(
     "--max-parallel-tasks",
     type=int,
-    default=5,
+    default=1,
     help="Maximum number of tasks to run in parallel",
 )
 @click.option(
@@ -85,6 +85,8 @@ def main(
         environment={
             "ANTHROPIC_API_KEY": os.environ["ANTHROPIC_API_KEY"],
             "OPENAI_API_KEY": os.environ["OPENAI_API_KEY"],
+            "GITHUB_TOKEN": os.environ.get("GITHUB_TOKEN", ""),
+            "AZURE_OPENAI_ENDPOINT": os.environ.get("AZURE_OPENAI_ENDPOINT", ""),
         },
         agent_filters=list(agent_filters) if agent_filters else None,
         task_filters=list(task_filters) if task_filters else None,
