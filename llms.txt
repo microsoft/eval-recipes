@@ -534,7 +534,7 @@ The goal of the module is to produce a final report that details how well each a
 The core of the module is a harness that uses agent definitions (defaults in `data/agents/`) 
 and task definitions (defaults in `data/tasks/`) to run agents on tasks, each their own isolated Docker containers.
 After each agent has been run on a task, the task's `test.py` script is executed to validate the agent's solution and produce a score.
-For each agent-task pair that does not get a perfect score of 100, a report is generated that analyzes what went wrong.
+For each agent-task pair that scores below 85%, a report is generated that analyzes what went wrong.
 Finally, these individual reports are rolled up into a final report for each agent.
 
 
