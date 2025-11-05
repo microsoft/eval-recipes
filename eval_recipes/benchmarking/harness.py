@@ -10,6 +10,7 @@ import uuid
 
 from liquid import Template
 from loguru import logger
+import pathspec
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TaskID, TextColumn, TimeElapsedColumn
 import yaml
 
@@ -31,7 +32,7 @@ class Harness:
         task_filters: list[str] | None = None,
         max_parallel_tasks: int = 5,
         num_trials: int = 1,
-        eval_recipes_version: str = "0.0.14",
+        eval_recipes_version: str = "0.0.15",
     ) -> None:
         """
         Initialize the benchmark harness.
@@ -91,6 +92,25 @@ class Harness:
             with agent_yaml_file.open() as f:
                 agent_yaml = yaml.safe_load(f) or {}
 
+            # Handle local_source_path if specified
+            local_source_path = None
+            if "local_source_path" in agent_yaml:
+                local_source_path_str = agent_yaml["local_source_path"]
+                local_source_path = Path(local_source_path_str).resolve()
+                if not local_source_path.exists():
+                    logger.warning(
+                        f"Agent '{agent_dir.name}' specifies local_source_path='{local_source_path}' "
+                        f"but path does not exist. Skipping this agent."
+                    )
+                    continue
+                if not local_source_path.is_dir():
+                    logger.warning(
+                        f"Agent '{agent_dir.name}' specifies local_source_path='{local_source_path}' "
+                        f"but path is not a directory. Skipping this agent."
+                    )
+                    continue
+                logger.info(f"Agent '{agent_dir.name}' will use local source from: {local_source_path}")
+
             agents.append(
                 AgentConfig(
                     name=agent_dir.name,
@@ -98,6 +118,7 @@ class Harness:
                     agent_installation=install_file.read_text(),
                     command_template=command_template_file.read_text(),
                     data_dir=data_dir if data_dir.exists() and data_dir.is_dir() else None,
+                    local_source_path=local_source_path,
                 )
             )
 
@@ -183,8 +204,15 @@ class Harness:
         """Build the complete Dockerfile from base template using liquid."""
         base_template = self.base_template.read_text()
         template = Template(base_template)
+
+        # If agent has local source, prepend COPY command to agent_installation
+        agent_installation = agent.agent_installation
+        if agent.local_source_path:
+            copy_command = "COPY agent_source /tmp/agent_source\n"
+            agent_installation = copy_command + agent_installation
+
         return template.render(
-            agent_installation=agent.agent_installation,
+            agent_installation=agent_installation,
             task_installation=task.task_installation,
         )
 
@@ -192,17 +220,50 @@ class Harness:
         """
         Recursively collect all files from a directory.
 
+        Respects .gitignore patterns if a .gitignore file exists in the directory root.
+        Falls back to hardcoded skip patterns if no .gitignore is present.
+
         Args:
             directory: Path to directory to collect files from
 
         Returns:
             Dictionary mapping relative file paths to file contents
         """
+        # Directories to skip when collecting files (fallback if no .gitignore)
+        skip_dirs = {".git", ".venv", "__pycache__", "node_modules", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+
+        # Try to load .gitignore from the root of the directory
+        gitignore_spec: pathspec.PathSpec | None = None
+        gitignore_path = directory / ".gitignore"
+        if gitignore_path.exists():
+            try:
+                with gitignore_path.open() as f:
+                    gitignore_spec = pathspec.PathSpec.from_lines("gitwildmatch", f)
+                logger.debug(f"Loaded .gitignore from {gitignore_path}")
+            except Exception as e:
+                logger.warning(f"Failed to parse .gitignore at {gitignore_path}: {e}")
+
         files = {}
         for file_path in directory.rglob("*"):
-            if file_path.is_file():
-                relative_path = file_path.relative_to(directory)
-                files[str(relative_path)] = file_path.read_bytes()
+            if not file_path.is_file():
+                continue
+
+            relative_path = file_path.relative_to(directory)
+
+            # Check gitignore patterns first if available
+            if gitignore_spec and gitignore_spec.match_file(str(relative_path)):
+                continue
+
+            # Fallback to hardcoded skip_dirs
+            if any(part in skip_dirs for part in file_path.parts):
+                continue
+
+            # Skip compiled Python files
+            if file_path.suffix in {".pyc", ".pyo"}:
+                continue
+
+            files[str(relative_path)] = file_path.read_bytes()
+
         return files
 
     def _aggregate_trial_results(
@@ -376,8 +437,22 @@ class Harness:
             dockerfile_content = self._build_dockerfile(agent, task)
             image_tag = f"benchmark-{agent.name}-{task.name}-trial{trial_num}".lower()
 
+            # Collect local source files if agent uses local source
+            build_context_files: dict[str, bytes] = {}
+            if agent.local_source_path:
+                logger.info(f"Collecting local source files from {agent.local_source_path}")
+                local_source_files = self._collect_directory_files(agent.local_source_path)
+                # Add files with agent_source/ prefix so they match COPY command in Dockerfile
+                for file_path, content in local_source_files.items():
+                    build_context_files[f"agent_source/{file_path}"] = content
+                logger.info(f"Collected {len(local_source_files)} file(s) from local source")
+
             with DockerManager(
-                log_dir=trial_dir, dockerfile=dockerfile_content, image_tag=image_tag, container_env=container_env
+                log_dir=trial_dir,
+                dockerfile=dockerfile_content,
+                image_tag=image_tag,
+                container_env=container_env,
+                build_context_files=build_context_files,
             ) as docker_manager:
                 assert docker_manager.container is not None
                 logger.info(f"Built image: {docker_manager.actual_image_tag}")

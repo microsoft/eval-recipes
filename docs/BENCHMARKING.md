@@ -40,7 +40,7 @@ uv run scripts/run_benchmarks.py --agent-filter name=claude_code --task-filter n
 
 ## Creating a New Agent
 
-Agents are defined in the `data/agents/` directory. 
+Agents are defined in the `data/agents/` directory.
 Each agent is a subdirectory containing the files needed to install and run the agent.
 Included agents are located in [data/agents/](../data/agents/).
 
@@ -50,6 +50,47 @@ agent.yaml            # Agent configuration
 install.dockerfile    # Docker commands to install the agent
 command_template.txt  # Liquid template for the command to run the agent
 ```
+
+See [data/agents/gh_cli/](../data/agents/gh_cli/) for an example agent definition.
+
+
+## Using Local Agent Versions
+
+For development and testing, create agent variants that use local source code instead of remote repositories. This enables rapid iteration on agent improvements while testing against benchmarks.
+
+### Creating a Local Agent Variant
+
+1. Create a new agent directory (e.g., `data/agents/your_agent_local/`)
+2. Add `agent.yaml` with `local_source_path` pointing to your local source:
+   ```yaml
+   local_source_path: /absolute/path/to/your/agent/source
+   required_env_vars:
+     - API_KEY
+   ```
+3. Create `install.dockerfile` that installs from `/tmp/agent_source/` (where source is automatically copied)
+4. Copy or create `command_template.txt`
+
+
+### How It Works
+
+1. Harness validates `local_source_path` exists
+2. Collects files, respecting `.gitignore` if present (otherwise excludes `.git`, `.venv`, `__pycache__`, etc.)
+3. Adds files to Docker build context as `agent_source/`
+4. Copies `agent_source` to `/tmp/agent_source/` in container
+5. Your `install.dockerfile` installs from there. This dockerfile should install the agent so that it is globally available. The commands will run in `/project/`, not where the agent's files are.
+6. Image is rebuilt each run, capturing your latest changes
+
+### Usage
+
+```bash
+# Run with local version
+uv run scripts/run_benchmarks.py --agent-filter name=your_agent_local
+
+# Compare local vs production
+uv run scripts/run_benchmarks.py --agent-filter name=your_agent,your_agent_local
+```
+
+**Notes**: `local_source_path` must be absolute. Build time includes copying all source files. Images rebuild automatically to capture code changes.
 
 
 ## Creating a New Task
@@ -118,3 +159,7 @@ See **[data/tasks/style_blender/test.py](../data/tasks/style_blender/test.py)** 
 Two slash commands are available to help create high-quality benchmark tasks:
 - [`/create-benchmark-test`](../.claude/commands/create-benchmark-test.md) - Guides you through creating a complete new benchmark task
 - [`/create-semantic-tests`](../.claude/commands/create-semantic-tests.md) - Helps design semantic tests for a task
+
+## Notes
+
+- You may want to prune your Docker images and containers periodically to save space. Containers/images can hang around when runs are unexpectedly interrupted.
