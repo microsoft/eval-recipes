@@ -21,12 +21,14 @@ class DockerManager:
         dockerfile: str,
         image_tag: str | None = None,
         container_env: dict[str, str] | None = None,
+        build_context_files: dict[str, bytes] | None = None,
         **container_kwargs,
     ):
         self.log_dir = log_dir
         self.dockerfile = dockerfile
         self.image_tag = image_tag
         self.container_env = container_env or {}
+        self.build_context_files = build_context_files or {}
         self.container_kwargs = container_kwargs
 
         self.client: docker.DockerClient | None = None
@@ -63,6 +65,34 @@ class DockerManager:
             raise RuntimeError("DockerManager must be used as a context manager (with DockerManager(...) as manager:)")
         return self.client
 
+    def _create_build_context_tar(self, dockerfile: str, context_files: dict[str, bytes]) -> BytesIO:
+        """
+        Create a tar archive containing Dockerfile and build context files.
+
+        Args:
+            dockerfile: Dockerfile content as a string
+            context_files: Dictionary mapping relative paths to file contents
+
+        Returns:
+            BytesIO containing the tar archive
+        """
+        tar_stream = BytesIO()
+        with tarfile.open(fileobj=tar_stream, mode="w") as tar:
+            # Add Dockerfile
+            dockerfile_info = tarfile.TarInfo(name="Dockerfile")
+            dockerfile_bytes = dockerfile.encode("utf-8")
+            dockerfile_info.size = len(dockerfile_bytes)
+            tar.addfile(dockerfile_info, BytesIO(dockerfile_bytes))
+
+            # Add context files
+            for file_path, file_content in context_files.items():
+                file_info = tarfile.TarInfo(name=file_path)
+                file_info.size = len(file_content)
+                tar.addfile(file_info, BytesIO(file_content))
+
+        tar_stream.seek(0)
+        return tar_stream
+
     def _build_image(
         self, dockerfile: str, image_tag: str | None = None, log_filename: str = "build_image.log"
     ) -> tuple[Image, str, str]:
@@ -82,10 +112,21 @@ class DockerManager:
         log_file = self.log_dir / log_filename
 
         try:
+            # If there are build context files, create a tar archive with Dockerfile and context files
+            if self.build_context_files:
+                fileobj = self._create_build_context_tar(dockerfile, self.build_context_files)
+                custom_context = True
+            else:
+                fileobj = BytesIO(dockerfile.encode())
+                custom_context = False
+
             image, build_logs_generator = client.images.build(
-                fileobj=BytesIO(dockerfile.encode()),
+                fileobj=fileobj,
                 tag=image_tag,
                 rm=True,
+                custom_context=custom_context,
+                nocache=True,
+                pull=True,
             )
 
             # Stream logs to file and collect them

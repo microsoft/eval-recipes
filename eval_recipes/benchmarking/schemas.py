@@ -12,6 +12,7 @@ class AgentConfig(BaseModel):
     agent_installation: str  # Docker commands to install the agent
     command_template: str  # Command Liquid template with placeholders like {{task_instructions}}
     data_dir: Path | None = None  # Optional path to agent data directory
+    local_source_path: Path | None = None  # Optional path to local agent source code for development
 
 
 class TaskInfo(BaseModel):
