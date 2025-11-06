@@ -15,17 +15,30 @@ from eval_recipes.benchmarking.test_utils import (
 )
 
 
-# Define Semantic Test 1
+# Define Semantic Test 1 - Agent SDK Check
 
-STEPS_1_CLAUDE_AGENT_SDK_DEPENDENCY = """1. Explore the code that the agent generated in this project directory to see if it uses \
-the Claude Code or Agent SDK (Ex. claude-code-sdk or claude-agent-sdk for Python). \
-More info is at https://docs.claude.com/en/api/agent-sdk/overview if you need it.
+AGENT_SDK_DEFINITION = """The solution should use an Agent SDK, such as Claude Agent/Code SDK, Microsoft Agent Framework, Microsoft Amplifier (https://github.com/microsoft/amplifier/tree/next), OpenAI Codex CLI, or others that are similarly capable. These SDKs must have the following functionality:
+- Automatic Context Management to ensure your agent doesn't run out of context.
+- Rich tool ecosystem: File operations, code execution, web search, and MCP extensibility
+- Excels at code generation and effectively gives the agent a "computer" where it can find appropriate files, write and edit files, lint the code, run it, debug, edit, and sometimes take these actions iteratively until it succeeds.
+- APIs like OpenAI's chat completions or Responses API, Anthropic's Messages API, or Azure OpenAI alone are NOT sufficient and should not recieve any credit."""
+
+STEPS_1_AGENT_SDK_DEPENDENCY = f"""{AGENT_SDK_DEFINITION}
+
+1. Explore the code that the agent generated in this project directory to see if it uses an Agent SDK.
 2. Look for where dependencies are defined (e.g., pyproject.toml, requirements.txt, package.json, etc.)
-3. Check which dependencies are being imported and actually used in the code to create the email drafting solution."""
+3. Check which dependencies are being imported and actually used in the code to create the email drafting solution.
+4. Verify the SDK provides the required agent capabilities: automatic context management, rich tool ecosystem (file operations, code execution), and iterative code generation/debugging capabilities.
+5. Confirm it is NOT just a plain API client (like openai.OpenAI() or anthropic.Anthropic() without agent features)."""
 
-RUBRIC_1_CLAUDE_AGENT_SDK_DEPENDENCY = {
-    "justification": "str - explanation of if the agent used the correct dependency",
-    "score": "float - Score 100 if the agent's solution uses the Claude Code or Agent SDK (claude-code-sdk or claude-agent-sdk). Score 0 otherwise.",
+RUBRIC_1_AGENT_SDK_DEPENDENCY = {
+    "agent_sdk_identified": "str - Name of the Agent SDK found (e.g., 'Claude Agent SDK', 'Microsoft Agent Framework', 'Amplifier', 'OpenAI Codex CLI', 'None')",
+    "has_context_management": "bool - Does it provide automatic context management?",
+    "has_tool_ecosystem": "bool - Does it provide rich tool ecosystem (file operations, code execution, web search)?",
+    "has_iterative_capabilities": "bool - Can it iteratively write, run, debug, and edit code?",
+    "evidence": "str - Brief description of evidence found (dependency files, imports, usage patterns)",
+    "justification": "str - Detailed explanation of whether this qualifies as an Agent SDK based on the criteria",
+    "score": "float - Score 100 if the solution uses a qualifying Agent SDK with all required capabilities. Score 0 if it uses plain API clients or lacks required capabilities.",
 }
 
 # Define Semantic Test 2
@@ -79,10 +92,10 @@ async def run_test(test_id: str, output_dir: Path, instructions_file: Path | Non
     instructions = get_instructions_from_file_or_default(instructions_file=instructions_file)
 
     try:
-        logger.info(f"Running semantic test 1 to check for Claude Agent SDK dependency...")
+        logger.info(f"Running semantic test 1 to check for Agent SDK dependency...")
         result_1 = await semantic_test(
-            steps=STEPS_1_CLAUDE_AGENT_SDK_DEPENDENCY,
-            rubric=RUBRIC_1_CLAUDE_AGENT_SDK_DEPENDENCY,
+            steps=STEPS_1_AGENT_SDK_DEPENDENCY,
+            rubric=RUBRIC_1_AGENT_SDK_DEPENDENCY,
             context=instructions,
             working_dir=Path("/project"),
         )
