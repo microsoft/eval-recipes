@@ -17,16 +17,26 @@ from eval_recipes.benchmarking.test_utils import (
 
 # Define Semantic Test 1: Check Dependencies
 
-STEPS_1_DEPENDENCIES = """1. Explore the code in the project directory to find where dependencies are defined.
+AGENT_SDK_DEFINITION = """The solution should use an Agent SDK, such as Claude Agent/Code SDK, Microsoft Agent Framework, Microsoft Amplifier (https://github.com/microsoft/amplifier/tree/next), OpenAI Codex CLI, or others that are similarly capable. These SDKs must have the following functionality:
+- Automatic Context Management to ensure your agent doesn't run out of context.
+- Rich tool ecosystem: File operations, code execution, web search, and MCP extensibility
+- Excels at code generation and effectively gives the agent a "computer" where it can find appropriate files, write and edit files, lint the code, run it, debug, edit, and sometimes take these actions iteratively until it succeeds.
+- APIs like OpenAI's chat completions or Responses API, Anthropic's Messages API, or Azure OpenAI alone are NOT sufficient and should not recieve any credit."""
+
+STEPS_1_DEPENDENCIES = f"""{AGENT_SDK_DEFINITION}
+
+1. Explore the code in the project directory to find where dependencies are defined.
 2. Look for dependency files like pyproject.toml, requirements.txt, package.json, etc.
 3. Check if the code uses:
-   - DDGS | Dux Distributed Global Search library for web search
-   - Claude Code or Agent SDK (claude-code-sdk or claude-agent-sdk) for AI interactions
-4. Verify these dependencies are actually imported and used in the implementation."""
+   - DDGS / Dux Distributed Global Search library for web search
+   - An Agent SDK (see definition above) for AI interactions
+4. Verify these dependencies are actually imported and used in the implementation.
+5. Confirm the AI framework is an Agent SDK with the required capabilities, not just a plain API client."""
 
 RUBRIC_1_DEPENDENCIES = {
     "duckduckgo_dependency": "str - (50 points) Does the solution use ddgs Python library for searching news? Check both dependency files and actual imports/usage in code.",
-    "claude_sdk_dependency": "str - (50 points) Does the solution use Claude Code or Agent SDK (claude-code-sdk or claude-agent-sdk) for AI interactions? Check both dependency files and actual imports/usage in code.",
+    "agent_sdk_identified": "str - Name of Agent SDK found, or 'None'",
+    "agent_sdk_dependency": "str - (50 points) Does the solution use a qualifying Agent SDK (Claude Agent/Code SDK, Microsoft Agent Framework, Amplifier, OpenAI Codex CLI) for AI interactions? Must provide automatic context management, rich tool ecosystem, and iterative code capabilities. NOT plain API clients.",
     "score": "float - Score between 0 and 100 based on the above criteria. Sum the points earned from each criterion.",
 }
 

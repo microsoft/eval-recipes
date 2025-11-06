@@ -17,12 +17,21 @@ from eval_recipes.benchmarking.test_utils import (
 
 # Define Semantic Test 1: Check Multi-Stage Architecture
 
-STEPS_1_ARCHITECTURE = """1. Explore the code for the product review tool to understand the architecture.
+AGENT_SDK_DEFINITION = """The solution should use an Agent SDK, such as Claude Agent/Code SDK, Microsoft Agent Framework, Microsoft Amplifier (https://github.com/microsoft/amplifier/tree/next), OpenAI Codex CLI, or others that are similarly capable. These SDKs must have the following functionality:
+- Automatic Context Management to ensure your agent doesn't run out of context.
+- Rich tool ecosystem: File operations, code execution, web search, and MCP extensibility
+- Excels at code generation and effectively gives the agent a "computer" where it can find appropriate files, write and edit files, lint the code, run it, debug, edit, and sometimes take these actions iteratively until it succeeds.
+- APIs like OpenAI's chat completions or Responses API, Anthropic's Messages API, or Azure OpenAI alone are NOT sufficient and should not recieve any credit."""
+
+STEPS_1_ARCHITECTURE = f"""{AGENT_SDK_DEFINITION}
+
+1. Explore the code for the product review tool to understand the architecture.
 2. Check for required dependencies:
    - Look for dependency files (pyproject.toml, requirements.txt, etc.)
-   - Verify the code uses Claude Code or Agent SDK (claude-code-sdk or claude-agent-sdk) for LLM interactions
+   - Verify the code uses an Agent SDK (see definition above) for LLM interactions
    - Verify the code uses ddgs (Dux Distributed Global Search) for finding reviews
    - Check that these dependencies are actually imported and used in the code
+   - Confirm the AI framework is an Agent SDK with required capabilities, not just a plain API client
 3. Look for evidence of the required multi-stage pipeline:
    - A writer component that creates the initial draft
    - An accuracy-reviewer that checks for proper citations and hallucinations
@@ -35,7 +44,8 @@ STEPS_1_ARCHITECTURE = """1. Explore the code for the product review tool to und
 5. Check if there's support for user feedback with [bracket-enclosed-comments]."""
 
 RUBRIC_1_ARCHITECTURE = {
-    "claude_sdk_dependency": "str - (15 points) Does the solution use Claude Code or Agent SDK (claude-code-sdk or claude-agent-sdk) for LLM interactions? Check both dependency files and actual imports/usage in code.",
+    "agent_sdk_identified": "str - Name of Agent SDK used, or 'None'",
+    "agent_sdk_dependency": "str - (15 points) Does solution use qualifying Agent SDK (Claude Agent/Code SDK, Microsoft Agent Framework, Amplifier, OpenAI Codex CLI) for LLM interactions? Must provide automatic context management, rich tool ecosystem, and iterative code capabilities. NOT plain API clients.",
     "ddgs_dependency": "str - (10 points) Does the solution use ddgs (Dux Distributed Global Search) for finding reviews? Check both dependency files and actual imports/usage in code.",
     "writer_component": "str - (12 points) Is there a clear writer component that creates the initial markdown report draft?",
     "accuracy_reviewer": "str - (12 points) Is there an accuracy-reviewer component that validates citations and checks for hallucinations?",

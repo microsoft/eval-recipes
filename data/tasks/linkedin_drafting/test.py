@@ -17,12 +17,21 @@ from eval_recipes.benchmarking.test_utils import (
 
 # Define Semantic Test 1: Dependencies and Architecture
 
-STEPS_1_DEPENDENCIES = """1. Explore the code that was created to understand the implementation.
+AGENT_SDK_DEFINITION = """The solution should use an Agent SDK, such as Claude Agent/Code SDK, Microsoft Agent Framework, Microsoft Amplifier (https://github.com/microsoft/amplifier/tree/next), OpenAI Codex CLI, or others that are similarly capable. These SDKs must have the following functionality:
+- Automatic Context Management to ensure your agent doesn't run out of context.
+- Rich tool ecosystem: File operations, code execution, web search, and MCP extensibility
+- Excels at code generation and effectively gives the agent a "computer" where it can find appropriate files, write and edit files, lint the code, run it, debug, edit, and sometimes take these actions iteratively until it succeeds.
+- APIs like OpenAI's chat completions or Responses API, Anthropic's Messages API, or Azure OpenAI alone are NOT sufficient and should not recieve any credit."""
+
+STEPS_1_DEPENDENCIES = f"""{AGENT_SDK_DEFINITION}
+
+1. Explore the code that was created to understand the implementation.
 2. Look for where dependencies are defined (e.g., pyproject.toml, requirements.txt, package.json, etc.)
-3. Check if the solution uses Claude Code or Agent SDK (claude-code-sdk or claude-agent-sdk for Python):
+3. Check if the solution uses an Agent SDK (see definition above):
    - Check which dependencies are listed in dependency files
    - Verify these dependencies are being imported in the code
    - Confirm they are actually used in the implementation (not just imported)
+   - Verify the SDK provides the required agent capabilities, not just plain API calls
 4. Check if the solution uses an image generation API:
    - Look for OpenAI image generation API usage (DALL-E 3, gpt-image-1, or similar)
    - Check if the code actually calls these APIs to generate images (not just create prompts)
@@ -40,7 +49,8 @@ STEPS_1_DEPENDENCIES = """1. Explore the code that was created to understand the
    - The solution should NOT be just one monolithic prompt doing everything"""
 
 RUBRIC_1_DEPENDENCIES = {
-    "claude_sdk_usage": "str - (35 points) Does the solution use Claude Code or Agent SDK (claude-code-sdk or claude-agent-sdk)? Check both dependency files and actual imports/usage in code.",
+    "agent_sdk_identified": "str - Name of Agent SDK found, or 'None'",
+    "agent_sdk_usage": "str - (35 points) Does solution use qualifying Agent SDK (Claude Agent/Code SDK, Microsoft Agent Framework, Amplifier, OpenAI Codex CLI)? Must provide automatic context management, rich tool ecosystem, and iterative code capabilities. NOT plain API clients. Check dependency files, imports, and actual usage.",
     "image_generation_api": "str - (35 points) Does the solution use OpenAI's image generation API (DALL-E 3, gpt-image-1, or similar)? Check dependencies and actual API calls in code. Verify images are actually generated, not just prompts.",
     "separate_stages_or_agents": "str - (30 points) Does the solution have evidence of separate stages/agents for key workflow parts (image generation, research for references, review against existing style)? Could be agentic loops, separate prompts, or modular functions. Not just one monolithic prompt.",
     "score": "float - Score between 0 and 100 based on the above criteria. Sum the points earned from each criterion.",
