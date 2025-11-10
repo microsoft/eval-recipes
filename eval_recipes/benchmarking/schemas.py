@@ -38,6 +38,8 @@ class TrialResult(BaseModel):
     score: float
     metadata: dict[str, Any] = {}
     test_output: str
+    agent_duration_seconds: float | None = None
+    test_duration_seconds: float | None = None
 
     @field_validator("score")
     @classmethod
@@ -57,6 +59,10 @@ class AggregatedTaskResult(BaseModel):
     min_score: float
     max_score: float
     num_perfect_trials: int  # How many trials got 100%
+    mean_agent_duration_seconds: float | None = None
+    median_agent_duration_seconds: float | None = None
+    mean_test_duration_seconds: float | None = None
+    median_test_duration_seconds: float | None = None
 
     @field_validator("mean_score", "median_score", "min_score", "max_score")
     @classmethod

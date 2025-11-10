@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import json
 from pathlib import Path
 import statistics
+import time
 from typing import Any
 import uuid
 
@@ -32,7 +33,7 @@ class Harness:
         task_filters: list[str] | None = None,
         max_parallel_tasks: int = 5,
         num_trials: int = 1,
-        eval_recipes_version: str = "0.0.16",
+        eval_recipes_version: str = "0.0.17",
     ) -> None:
         """
         Initialize the benchmark harness.
@@ -290,6 +291,15 @@ class Harness:
         max_score = max(scores)
         num_perfect_trials = sum(1 for s in scores if s == 100.0)
 
+        # Calculate duration statistics
+        agent_durations = [trial.agent_duration_seconds for trial in trials if trial.agent_duration_seconds is not None]
+        test_durations = [trial.test_duration_seconds for trial in trials if trial.test_duration_seconds is not None]
+
+        mean_agent_duration = statistics.mean(agent_durations) if agent_durations else None
+        median_agent_duration = statistics.median(agent_durations) if agent_durations else None
+        mean_test_duration = statistics.mean(test_durations) if test_durations else None
+        median_test_duration = statistics.median(test_durations) if test_durations else None
+
         return AggregatedTaskResult(
             task_name=task_name,
             agent_name=agent_name,
@@ -301,6 +311,10 @@ class Harness:
             min_score=min_score,
             max_score=max_score,
             num_perfect_trials=num_perfect_trials,
+            mean_agent_duration_seconds=mean_agent_duration,
+            median_agent_duration_seconds=median_agent_duration,
+            mean_test_duration_seconds=mean_test_duration,
+            median_test_duration_seconds=median_test_duration,
         )
 
     def _run_tests(
@@ -310,6 +324,7 @@ class Harness:
         run_dir: Path,
         docker_manager: DockerManager,
         trial_number: int,
+        agent_duration: float,
     ) -> TrialResult | None:
         """Run test script in container and return results."""
         try:
@@ -356,6 +371,7 @@ class Harness:
             # Execute test script using uv run from /project
             # This uses /project's venv which has eval_recipes installed as an editable dependency
             logger.info(f"Running test: {task.test_command}")
+            test_start_time = time.perf_counter()
             _exec_result, full_output = docker_manager.exec_command(
                 container=container,
                 command=["uv", "run", "test.py"],
@@ -366,6 +382,7 @@ class Harness:
                 },
                 workdir="/project",
             )
+            test_duration = time.perf_counter() - test_start_time
             logger.info(f"Test output saved to: {run_dir / 'test_output.log'}")
 
             # Read result file from container
@@ -378,6 +395,8 @@ class Harness:
                     score=result_data["score"],
                     metadata=result_data.get("metadata", {}),
                     test_output=full_output,
+                    agent_duration_seconds=agent_duration,
+                    test_duration_seconds=test_duration,
                 )
                 results_file = run_dir / "test_results.json"
                 results_file.write_text(json.dumps(result_data, indent=2))
@@ -392,6 +411,8 @@ class Harness:
                     score=0,
                     metadata=result_data["metadata"],
                     test_output=full_output,
+                    agent_duration_seconds=agent_duration,
+                    test_duration_seconds=test_duration,
                 )
                 return trial_result
         except Exception as e:
@@ -475,18 +496,23 @@ class Harness:
                 command = command_template.render(task_instructions=escaped_instructions)
                 logger.info(f"Executing command for trial {trial_num}: {command}")
 
+                # Track agent execution time
+                agent_start_time = time.perf_counter()
                 _exec_result, _exec_logs = docker_manager.exec_command(
                     container=docker_manager.container,
                     command=["bash", "-c", command],
                     log_filename="agent_output.log",
                     timeout=1800,
                 )
+                agent_duration = time.perf_counter() - agent_start_time
                 logger.info(
                     f"Trial {trial_num} command execution completed. Output saved to: {trial_dir / 'agent_output.log'}"
                 )
 
                 # Run tests for this trial
-                trial_result = self._run_tests(docker_manager.container, task, trial_dir, docker_manager, trial_num)
+                trial_result = self._run_tests(
+                    docker_manager.container, task, trial_dir, docker_manager, trial_num, agent_duration
+                )
 
                 # Add trial result to list
                 if trial_result:
@@ -500,6 +526,8 @@ class Harness:
                         score=0.0,
                         metadata={"error": "Test execution failed"},
                         test_output="",
+                        agent_duration_seconds=agent_duration,
+                        test_duration_seconds=None,
                     )
                     trial_results.append(failed_trial_result)
 

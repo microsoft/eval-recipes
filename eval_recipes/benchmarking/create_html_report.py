@@ -29,6 +29,9 @@ class TaskResult:
     max_score: float = 0.0
     median_score: float = 0.0
     num_perfect_trials: int = 0
+    # Timing statistics
+    mean_agent_duration_seconds: float = 0.0
+    median_agent_duration_seconds: float = 0.0
 
 
 def _load_task_results(benchmarks_output_dir: Path, tasks_directory: Path) -> list[TaskResult]:
@@ -86,6 +89,10 @@ def _load_task_results(benchmarks_output_dir: Path, tasks_directory: Path) -> li
         num_trials = aggregated_data.get("num_trials", 1)
         num_perfect_trials = aggregated_data.get("num_perfect_trials", 0)
 
+        # Extract timing data
+        mean_agent_duration = aggregated_data.get("mean_agent_duration_seconds", 0.0)
+        median_agent_duration = aggregated_data.get("median_agent_duration_seconds", 0.0)
+
         # Extract individual trial scores
         trials = aggregated_data.get("trials", [])
         trial_scores = [trial.get("score", 0.0) for trial in trials]
@@ -128,6 +135,8 @@ def _load_task_results(benchmarks_output_dir: Path, tasks_directory: Path) -> li
                 max_score=max_score,
                 median_score=median_score,
                 num_perfect_trials=num_perfect_trials,
+                mean_agent_duration_seconds=mean_agent_duration,
+                median_agent_duration_seconds=median_agent_duration,
             )
         )
 
@@ -909,6 +918,14 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
         consistent_tasks = sum(1 for t in agent_tasks if t.std_dev < 10.0)
         consistency_percentage = (consistent_tasks / len(agent_tasks) * 100) if agent_tasks else 0.0
 
+        # Calculate timing statistics
+        agent_durations = [t.mean_agent_duration_seconds for t in agent_tasks if t.mean_agent_duration_seconds > 0]
+        mean_agent_time = sum(agent_durations) / len(agent_durations) if agent_durations else 0.0
+        median_agent_durations = [
+            t.median_agent_duration_seconds for t in agent_tasks if t.median_agent_duration_seconds > 0
+        ]
+        median_agent_time = sum(median_agent_durations) / len(median_agent_durations) if median_agent_durations else 0.0
+
         agent_comparison_data.append(
             {
                 "name": agent_name,
@@ -916,6 +933,8 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
                 "mean_std_dev": mean_std_dev,
                 "consistency_percentage": consistency_percentage,
                 "total_tasks": total_tasks,
+                "mean_agent_time_minutes": mean_agent_time / 60,
+                "median_agent_time_minutes": median_agent_time / 60,
             }
         )
 
@@ -968,6 +987,7 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
                             <th>Avg Score</th>
                             <th>Mean Variability</th>
                             <th>Consistency Rate</th>
+                            <th>Avg Agent Time</th>
                             <th>Tasks Run</th>
                         </tr>
                     </thead>
@@ -977,6 +997,10 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
     best_avg = max((a["avg_score"] for a in agent_comparison_data), default=0)
     best_variability = min((a["mean_std_dev"] for a in agent_comparison_data), default=float("inf"))
     best_consistency = max((a["consistency_percentage"] for a in agent_comparison_data), default=0)
+    best_time = min(
+        (a["mean_agent_time_minutes"] for a in agent_comparison_data if a["mean_agent_time_minutes"] > 0),
+        default=float("inf"),
+    )
 
     for agent_data in agent_comparison_data:
         agent_formatted = _format_agent_name(agent_data["name"])
@@ -986,6 +1010,7 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
         avg_class = " best-score" if agent_data["avg_score"] == best_avg else ""
         var_class = " best-score" if agent_data["mean_std_dev"] == best_variability else ""
         cons_class = " best-score" if agent_data["consistency_percentage"] == best_consistency else ""
+        time_class = " best-score" if agent_data["mean_agent_time_minutes"] == best_time and best_time > 0 else ""
 
         html_parts.append(f"""
                         <tr>
@@ -993,6 +1018,7 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
                             <td class="{avg_class}">{agent_data["avg_score"]:.1f}%</td>
                             <td class="{var_class}">±{agent_data["mean_std_dev"]:.1f}%</td>
                             <td class="{cons_class}">{agent_data["consistency_percentage"]:.0f}%</td>
+                            <td class="{time_class}">{agent_data["mean_agent_time_minutes"]:.1f}m</td>
                             <td>{agent_data["total_tasks"]}</td>
                         </tr>""")
 
@@ -1226,6 +1252,10 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
         consistent_tasks = sum(1 for t in agent_tasks if t.std_dev < 10.0)
         consistency_percentage = (consistent_tasks / len(agent_tasks) * 100) if agent_tasks else 0.0
 
+        # Calculate timing metrics
+        agent_durations = [t.mean_agent_duration_seconds for t in agent_tasks if t.mean_agent_duration_seconds > 0]
+        avg_agent_time_minutes = (sum(agent_durations) / len(agent_durations) / 60) if agent_durations else 0.0
+
         html_parts.extend(
             [
                 """
@@ -1253,6 +1283,13 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
                 f"{consistency_percentage:.0f}%",
                 """</span>
                     <span class="metric-explanation">Tasks with &lt;10% variation (higher is better)</span>
+                </div>
+                <div class="consistency-item">
+                    <span class="metric-label">Average Time</span>
+                    <span class="metric-value">""",
+                f"{avg_agent_time_minutes:.1f}m",
+                """</span>
+                    <span class="metric-explanation">Mean agent execution time per task</span>
                 </div>
             </div>
 
@@ -1397,7 +1434,17 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
             if task.num_trials > 1 and task.trial_scores:
                 trial_scores_html = "<ul>"
                 for idx, score in enumerate(task.trial_scores, 1):
-                    trial_scores_html += f"<li>Trial {idx}: {score:.1f}%</li>"
+                    # Get timing data for this trial
+                    timing_str = ""
+                    if task.trials and idx <= len(task.trials):
+                        trial = task.trials[idx - 1]
+                        agent_duration = trial.get("agent_duration_seconds")
+                        test_duration = trial.get("test_duration_seconds")
+                        if agent_duration is not None and test_duration is not None:
+                            agent_min = agent_duration / 60
+                            test_min = test_duration / 60
+                            timing_str = f" (Agent: {agent_min:.1f}min, Test: {test_min:.1f}min)"
+                    trial_scores_html += f"<li>Trial {idx}: {score:.1f}%{timing_str}</li>"
                 trial_scores_html += "</ul>"
                 trial_scores_html += (
                     f"<p><strong>Summary:</strong> {task.num_perfect_trials}/{task.num_trials} perfect trials</p>"

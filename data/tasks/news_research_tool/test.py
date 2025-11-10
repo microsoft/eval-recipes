@@ -174,7 +174,7 @@ async def run_test(test_id: str, output_dir: Path, instructions_file: Path | Non
         final_score = (
             result_1.score * 0.20
             + result_2.score * 0.30
-            # + result_3.score * 0.50
+            + result_3.score * 0.50
         )
 
         metadata = {
