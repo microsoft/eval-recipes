@@ -1,1 +1,1 @@
-IS_SANDBOX=1 claude --verbose --output-format stream-json -p "{{task_instructions}}" --disallowedTools "AskUserQuestion"
+IS_SANDBOX=1 claude --verbose --output-format stream-json -p "{{task_instructions}} Please do this without asking me any questions -- just go do the task to the best of your abilities!" --disallowedTools "AskUserQuestion"
