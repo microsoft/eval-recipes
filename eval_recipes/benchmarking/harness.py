@@ -15,6 +15,7 @@ import pathspec
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TaskID, TextColumn, TimeElapsedColumn
 import yaml
 
+from eval_recipes.benchmarking.agent_interacter import interact_with_agent
 from eval_recipes.benchmarking.create_html_report import create_html_report
 from eval_recipes.benchmarking.docker_manager import DockerManager
 from eval_recipes.benchmarking.filters import apply_filters
@@ -33,6 +34,8 @@ class Harness:
         task_filters: list[str] | None = None,
         max_parallel_tasks: int = 5,
         num_trials: int = 1,
+        enable_agent_continuation: bool = True,
+        report_score_threshold: float = 85.0,
         eval_recipes_version: str = "0.0.17",
     ) -> None:
         """
@@ -48,6 +51,8 @@ class Harness:
             task_filters: Optional list of filter strings for tasks (e.g., ['difficulty=medium'])
             max_parallel_tasks: Maximum number of tasks to run in parallel
             num_trials: Number of times to run each task
+            enable_agent_continuation: Enable agent continuation checks (default: True)
+            report_score_threshold: Minimum score threshold to skip report generation (default: 85.0)
             eval_recipes_version: Version of eval_recipes to install from GitHub for testing
         """
         repo_root = Path(__file__).parents[2]
@@ -66,6 +71,8 @@ class Harness:
         self.task_filters = task_filters
         self.max_parallel_tasks = max_parallel_tasks
         self.num_trials = num_trials
+        self.enable_agent_continuation = enable_agent_continuation
+        self.report_score_threshold = report_score_threshold
 
         self.eval_recipes_version = eval_recipes_version
 
@@ -84,6 +91,7 @@ class Harness:
 
             install_file = agent_dir / "install.dockerfile"
             command_template_file = agent_dir / "command_template.txt"
+            command_template_continue_file = agent_dir / "command_template_continue.txt"
             agent_yaml_file = agent_dir / "agent.yaml"
             data_dir = agent_dir / "data"
 
@@ -118,6 +126,9 @@ class Harness:
                     required_env_vars=agent_yaml.get("required_env_vars", []),
                     agent_installation=install_file.read_text(),
                     command_template=command_template_file.read_text(),
+                    command_template_continue=(
+                        command_template_continue_file.read_text() if command_template_continue_file.exists() else None
+                    ),
                     data_dir=data_dir if data_dir.exists() and data_dir.is_dir() else None,
                     local_source_path=local_source_path,
                 )
@@ -325,8 +336,11 @@ class Harness:
         docker_manager: DockerManager,
         trial_number: int,
         agent_duration: float,
+        continuation_metadata: dict[str, Any] | None = None,
     ) -> TrialResult | None:
         """Run test script in container and return results."""
+        if continuation_metadata is None:
+            continuation_metadata = {}
         try:
             # Generate unique test ID - this is to make sure we can identify result files uniquely in the container
             test_id = str(uuid.uuid4())
@@ -393,7 +407,7 @@ class Harness:
                 trial_result = TrialResult(
                     trial_number=trial_number,
                     score=result_data["score"],
-                    metadata=result_data.get("metadata", {}),
+                    metadata={**result_data.get("metadata", {}), **continuation_metadata},
                     test_output=full_output,
                     agent_duration_seconds=agent_duration,
                     test_duration_seconds=test_duration,
@@ -409,7 +423,7 @@ class Harness:
                 trial_result = TrialResult(
                     trial_number=trial_number,
                     score=0,
-                    metadata=result_data["metadata"],
+                    metadata={**result_data["metadata"], **continuation_metadata},
                     test_output=full_output,
                     agent_duration_seconds=agent_duration,
                     test_duration_seconds=test_duration,
@@ -509,9 +523,73 @@ class Harness:
                     f"Trial {trial_num} command execution completed. Output saved to: {trial_dir / 'agent_output.log'}"
                 )
 
+                # Check if agent needs continuation
+                continuation_metadata: dict[str, Any] = {}
+                if self.enable_agent_continuation and agent.command_template_continue is not None:
+                    try:
+                        continuation_response = asyncio.run(
+                            interact_with_agent(agent_log=_exec_logs, task_instructions=task.instructions)
+                        )
+
+                        if continuation_response:
+                            continuation_metadata["continuation_occurred"] = True
+
+                            # Render continuation command template
+                            escaped_response = escape_bash_string(continuation_response)
+                            continuation_template = Template(agent.command_template_continue)
+                            continuation_command = continuation_template.render(task_instructions=escaped_response)
+
+                            logger.info(f"Executing continuation command: {continuation_command}")
+
+                            try:
+                                # Execute continuation (use different log name temporarily)
+                                continuation_start = time.perf_counter()
+                                _continuation_result, continuation_logs = docker_manager.exec_command(
+                                    container=docker_manager.container,
+                                    command=["bash", "-c", continuation_command],
+                                    log_filename="agent_continuation.log",
+                                    timeout=1800,
+                                )
+                                continuation_duration = time.perf_counter() - continuation_start
+
+                                # Append continuation logs to main agent_output.log
+                                agent_log_path = trial_dir / "agent_output.log"
+                                with agent_log_path.open("a") as f:
+                                    f.write("\n\n--- CONTINUATION ---\n\n")
+                                    f.write(continuation_logs)
+
+                                agent_duration += continuation_duration
+
+                            except Exception as e:
+                                logger.error(f"Failed to execute continuation command: {e}")
+                                continuation_metadata["continuation_error"] = str(e)
+                                # Still append error to log
+                                agent_log_path = trial_dir / "agent_output.log"
+                                with agent_log_path.open("a") as f:
+                                    f.write(f"\n\n--- CONTINUATION FAILED ---\n{e}\n")
+                        else:
+                            logger.info("No continuation needed - agent task appears complete")
+                            continuation_metadata["continuation_occurred"] = False
+
+                    except Exception as e:
+                        logger.error(f"Failed to check if agent needs continuation: {e}")
+                        continuation_metadata["continuation_check_error"] = str(e)
+                else:
+                    if not self.enable_agent_continuation:
+                        logger.info("Agent continuation is disabled")
+                    else:
+                        logger.info("Agent does not have a continuation template - skipping continuation check")
+                    continuation_metadata["continuation_disabled"] = True
+
                 # Run tests for this trial
                 trial_result = self._run_tests(
-                    docker_manager.container, task, trial_dir, docker_manager, trial_num, agent_duration
+                    docker_manager.container,
+                    task,
+                    trial_dir,
+                    docker_manager,
+                    trial_num,
+                    agent_duration,
+                    continuation_metadata,
                 )
 
                 # Add trial result to list
@@ -576,6 +654,7 @@ class Harness:
         semaphore: asyncio.Semaphore,
         progress: Progress | None = None,
         task_id: TaskID | None = None,
+        report_score_threshold: float = 85.0,
     ) -> None:
         """
         Generate a failure report for a single task.
@@ -586,11 +665,12 @@ class Harness:
             semaphore: Semaphore to limit concurrent report generation
             progress: Optional Rich progress instance for tracking
             task_id: Optional progress task ID for updating
+            report_score_threshold: Minimum score threshold to skip report generation (default: 85.0)
         """
         logger.info(f"Generating failure report for {run_dir.name}...")
         async with semaphore:
             try:
-                await generate_task_report(run_dir, task_dir_path)
+                await generate_task_report(run_dir, task_dir_path, report_score_threshold)
             except Exception as e:
                 logger.error(f"Failed to generate report for {run_dir.name}: {e}")
 
@@ -652,7 +732,12 @@ class Harness:
                 report_semaphore = asyncio.Semaphore(self.max_parallel_tasks)
                 report_coroutines = [
                     self._generate_single_task_report(
-                        run_dir, task_dir_path, report_semaphore, progress, report_progress_id
+                        run_dir,
+                        task_dir_path,
+                        report_semaphore,
+                        progress,
+                        report_progress_id,
+                        self.report_score_threshold,
                     )
                     for run_dir, task_dir_path in task_runs
                 ]

@@ -1,0 +1,1 @@
+IS_SANDBOX=1 claude --verbose --output-format stream-json -c -p "{{task_instructions}}" --disallowedTools "AskUserQuestion" --dangerously-skip-permissions

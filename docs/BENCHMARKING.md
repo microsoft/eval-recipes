@@ -7,7 +7,7 @@ The goal of the module is to produce a final report that details how well each a
 The core of the module is a harness that uses agent definitions (defaults in `data/agents/`) 
 and task definitions (defaults in `data/tasks/`) to run agents on tasks, each their own isolated Docker containers.
 After each agent has been run on a task, the task's `test.py` script is executed to validate the agent's solution and produce a score.
-For each agent-task pair that scores below 85%, a report is generated that analyzes what went wrong.
+For each agent-task pair that scores below a threshold, a report is generated that analyzes what went wrong.
 Finally, these individual reports are rolled up into a final report for each agent.
 
 
@@ -46,9 +46,11 @@ Included agents are located in [data/agents/](../data/agents/).
 
 ```
 data/agents/your_agent_name/
-agent.yaml            # Agent configuration
-install.dockerfile    # Docker commands to install the agent
-command_template.txt  # Liquid template for the command to run the agent
+agent.yaml                     # Agent configuration
+install.dockerfile             # Docker commands to install the agent
+command_template.txt           # Liquid template for the command to run the agent
+command_template_continue.txt  # (Optional) Template for agent continuation when follow-up is needed. This command must continue from the previous session/conversation.
+data/                          # (Optional) Agent-specific data files
 ```
 
 See [data/agents/gh_cli/](../data/agents/gh_cli/) for an example agent definition.
@@ -122,9 +124,13 @@ Required fields:
   - `difficulty`: One of `easy`, `medium`, or `hard`
   - `non_deterministic_evals`: Boolean indicating if test evaluations are non-deterministic (e.g., semantic tests using LLMs)
 
+Optional task_info fields:
+- `categories`: List of strings categorizing the task (e.g., `["cli", "automation"]`)
+
 Optional fields:
 - `required_env_vars`: List of environment variables required for the task (e.g., API keys for evaluation)
 - `test_command`: Command to run the test script (default: `uv run --no-project /project/test.py`)
+- `timeout`: Timeout in seconds for agent execution
 
 #### `setup.dockerfile` (Optional)
 
@@ -159,6 +165,40 @@ See **[data/tasks/style_blender/test.py](../data/tasks/style_blender/test.py)** 
 Two slash commands are available to help create high-quality benchmark tasks:
 - [`/create-benchmark-test`](../.claude/commands/create-benchmark-test.md) - Guides you through creating a complete new benchmark task
 - [`/create-semantic-tests`](../.claude/commands/create-semantic-tests.md) - Helps design semantic tests for a task
+
+
+## Multi-Trial Evaluation
+
+The harness supports running multiple trials of the same agent-task pair to measure consistency and reliability. Use `--num-trials N` to run each task N times.
+Results are aggregated with statistics including mean, median, standard deviation, minimum, and maximum scores.
+Each trial is stored in a separate subdirectory (`trial_1`, `trial_2`, etc.) within the results directory, and an `aggregated_results.json` file contains the statistical summary.
+
+
+## Command-Line Options
+
+The `scripts/run_benchmarks.py` script accepts the following options:
+
+- `--agents-dir`: Path to agents directory (default: `data/agents/`)
+- `--tasks-dir`: Path to tasks directory (default: `data/tasks/`)
+- `--runs-dir`: Output directory for results (default: `.benchmark_results`)
+- `--agent-filter`: Filter agents by field (format: `field=value`, `field!=value`, or `field=val1,val2` for multiple)
+- `--task-filter`: Filter tasks by field (same format as agent-filter)
+- `--generate-reports`: Generate failure analysis reports (default: True)
+- `--max-parallel-tasks`: Maximum number of tasks to run in parallel (default: 22)
+- `--num-trials`: Number of trials per agent-task pair (default: 2)
+- `--enable-agent-continuation/--disable-agent-continuation`: Toggle agent continuation feature (default: enabled)
+- `--report-score-threshold`: Score threshold for generating failure reports (default: 85.0)
+
+
+## Results
+
+Results include detailed metrics:
+- **Scores**: Task-specific scores from test scripts
+- **Timing**: Agent execution duration and test execution duration
+- **Reports**: Three types of reports are generated:
+  - **Trial failure reports**: Individual analysis for each trial scoring below the threshold
+  - **Consolidated reports**: Per-agent summary of all failures
+  - **HTML reports**: Interactive dashboards with tabbed interface showing overview, task catalog, and per-agent detailed results
 
 ## Notes
 

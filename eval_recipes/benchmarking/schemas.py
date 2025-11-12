@@ -11,6 +11,7 @@ class AgentConfig(BaseModel):
     required_env_vars: list[str] = []  # List of required environment variables
     agent_installation: str  # Docker commands to install the agent
     command_template: str  # Command Liquid template with placeholders like {{task_instructions}}
+    command_template_continue: str | None = None  # Optional command Liquid template for continuing agent conversation
     data_dir: Path | None = None  # Optional path to agent data directory
     local_source_path: Path | None = None  # Optional path to local agent source code for development
 

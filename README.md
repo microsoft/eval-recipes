@@ -1,11 +1,40 @@
 # Eval Recipes
 
-**Eval Recipes** is an evaluation framework that makes it easy to evaluate LLM chat assistants, and does so at a high degree of quality. 
-We use [recipes](https://sundaylettersfromsam.substack.com/p/what-is-an-ai-recipe) to develop specialized evaluation workflows that score conversations on 
-dimensions such as how well the assistant adhered to user preferences or if they did not generate any hallucinations.
+Eval Recipes is an library dedicated to make it easier to keep up with the state-of-the-art in evaluating AI agents.
+It currently has two main components: a **benchmarking** harness for evaluating CLI agents (GitHub Copilot CLI, Claude Code, etc) on real-world tasks via containers and an **online evaluation** framework for LLM chat assistants.
+The common thread between these components is the concept of [recipes](https://sundaylettersfromsam.substack.com/p/what-is-an-ai-recipe) 
+which are a mix of code and LLM calls to achieve a desired tradeoff between flexibility and quality.
+
+
+# Benchmarking
+
+Eval Recipes provides a benchmarking harness for evaluating AI agents on real-world tasks in isolated Docker containers.
+We have a few sample tasks ranging from creating CLI applications to automations. Agents are automatically scored based on deterministic and semantic tests using a specialized auditing agent.
+
+Additional features include agent continuation (automatically providing follow-up prompts when needed), multi-trial evaluation for consistency measurement, and reporting with HTML dashboards.
+
+
+## Running Benchmarks
+
+```bash
+# The default agents/tasks require these environment variables. Check the agent definitions for others.
+export ANTHROPIC_API_KEY=your_anthropic_key
+export OPENAI_API_KEY=your_openai_key
+
+uv run scripts/run_benchmarks.py --num-trials 2
+
+# Get more info about available arguments
+uv run scripts/run_benchmarks.py --help
+```
+
+Results are saved to timestamped directories in `data/benchmarking/runs/` containing agent logs, test outputs, timing data, and structured results.
+Any of these files may contain secrets that were used during the evaluation run. **NEVER** commit these files to source control without first checking for secrets.
+For detailed documentation on creating custom agents and tasks, see [BENCHMARKING.md](./docs/BENCHMARKING.md).
+
+
+# Online Evaluations
 
 ![Eval Recipes Animation](demos/data/EvalRecipesAnimation.gif)
-
 
 ## Get Started Quick!
 
@@ -154,29 +183,6 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
-
-
-## Benchmarking
-
-Eval Recipes provides a benchmarking harness for evaluating AI agents on real-world tasks in isolated Docker containers. 
-We have a few sample tasks ranging from creating CLI applications to automations. Agents are automatically scored based on deterministic and semantic tests.
-
-### Running Benchmarks
-
-```bash
-# The default agents/tasks require these environment variables
-export ANTHROPIC_API_KEY=your_anthropic_key
-export OPENAI_API_KEY=your_openai_key
-
-uv run scripts/run_benchmarks.py
-
-# Get more info about available arguments
-uv run scripts/run_benchmarks.py --help
-```
-
-Results are saved to timestamped directories in `data/benchmarking/runs/` containing agent logs, test outputs, and structured results.
-Any of these files may contain secrets that were used during the evaluation run. **NEVER** commit these files to source control without first checking for secrets.
-For detailed documentation on creating custom agents and tasks, see [BENCHMARKING.md](./docs/BENCHMARKING.md).
 
 
 ## Development Installation

@@ -1,0 +1,1 @@
+copilot -p "{{task_instructions}}" --continue --allow-all-tools --log-level all --stream off --model "claude-sonnet-4.5"
