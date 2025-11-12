@@ -67,6 +67,17 @@ load_dotenv()
     default=1,
     help="Number of times to run each task",
 )
+@click.option(
+    "--enable-agent-continuation/--disable-agent-continuation",
+    default=True,
+    help="Enable or disable agent continuation checks",
+)
+@click.option(
+    "--report-score-threshold",
+    type=float,
+    default=85.0,
+    help="Minimum score threshold to skip report generation (reports generated for scores below this)",
+)
 def main(
     agents_dir: Path,
     tasks_dir: Path,
@@ -76,6 +87,8 @@ def main(
     generate_reports: bool,
     max_parallel_tasks: int,
     num_trials: int,
+    enable_agent_continuation: bool,
+    report_score_threshold: float,
 ) -> None:
     """Run benchmarks for LLM agents."""
     harness = Harness(
@@ -92,6 +105,8 @@ def main(
         task_filters=list(task_filters) if task_filters else None,
         max_parallel_tasks=max_parallel_tasks,
         num_trials=num_trials,
+        enable_agent_continuation=enable_agent_continuation,
+        report_score_threshold=report_score_threshold,
     )
     asyncio.run(harness.run(generate_reports=generate_reports))
 

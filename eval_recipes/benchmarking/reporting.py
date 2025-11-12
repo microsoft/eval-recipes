@@ -70,7 +70,9 @@ Make sure that your report is factual and accurate. Do not make assumptions that
 Now start by making a todo list of steps you will take to analyze the failure and make sure the last todo is to write the report to FAILURE_REPORT.md."""
 
 
-async def generate_task_report(benchmark_output_dir: Path, task_directory: Path) -> None:
+async def generate_task_report(
+    benchmark_output_dir: Path, task_directory: Path, report_score_threshold: float = 85.0
+) -> None:
     """
     Generate detailed failure analysis reports for a benchmark task.
     Generates a separate report for each non-perfect trial.
@@ -78,9 +80,10 @@ async def generate_task_report(benchmark_output_dir: Path, task_directory: Path)
     Args:
         benchmark_output_dir: Path to the benchmark run directory containing logs
         task_directory: Path to the task directory containing instructions.txt
+        report_score_threshold: Minimum score threshold to skip report generation (default: 85.0)
 
     Creates:
-        FAILURE_REPORT_trial_N.md in trial_N/ subdirectories for each non-perfect trial
+        FAILURE_REPORT_trial_N.md in trial_N/ subdirectories for trials scoring below threshold
     """
     # Get task name from directory name
     task_name = task_directory.name
@@ -124,8 +127,8 @@ async def generate_task_report(benchmark_output_dir: Path, task_directory: Path)
     for trial_data in trials_data:
         trial_number = trial_data.get("trial_number")
         trial_score = trial_data.get("score", 0)
-        if trial_score >= 85.0:
-            logger.info(f"Skipping report for trial {trial_number} (score >= 85%)")
+        if trial_score >= report_score_threshold:
+            logger.info(f"Skipping report for trial {trial_number} (score >= {report_score_threshold}%)")
             continue
 
         trial_dir = benchmark_output_dir / f"trial_{trial_number}"

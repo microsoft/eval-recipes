@@ -245,6 +245,7 @@ def _format_name(name: str) -> str:
         "gh_cli": "GitHub CLI",
         "amplifier_v2": "Amplifier Next",
         "amplifier_v2_aoai": "Amplifier Next AOAI",
+        "amplifier_v2_toolkit": "Amplifier Next Toolkit",
     }
     if name_lower in special_names:
         return special_names[name_lower]
