@@ -1,6 +1,6 @@
 # Eval Recipes
 
-Eval Recipes is an library dedicated to make it easier to keep up with the state-of-the-art in evaluating AI agents.
+Eval Recipes is a library dedicated to make it easier to keep up with the state-of-the-art in evaluating AI agents.
 It currently has two main components: a **benchmarking** harness for evaluating CLI agents (GitHub Copilot CLI, Claude Code, etc) on real-world tasks via containers and an **online evaluation** framework for LLM chat assistants.
 The common thread between these components is the concept of [recipes](https://sundaylettersfromsam.substack.com/p/what-is-an-ai-recipe) 
 which are a mix of code and LLM calls to achieve a desired tradeoff between flexibility and quality.
