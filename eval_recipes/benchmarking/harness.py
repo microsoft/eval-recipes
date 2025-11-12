@@ -36,7 +36,7 @@ class Harness:
         num_trials: int = 1,
         enable_agent_continuation: bool = True,
         report_score_threshold: float = 85.0,
-        eval_recipes_version: str = "0.0.17",
+        eval_recipes_version: str = "0.0.18",
     ) -> None:
         """
         Initialize the benchmark harness.
