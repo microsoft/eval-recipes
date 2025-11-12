@@ -11,12 +11,41 @@ The built-in `claim_verification` evaluation is based on these two papers: [Clai
 
 # Eval Recipes
 
-**Eval Recipes** is an evaluation framework that makes it easy to evaluate LLM chat assistants, and does so at a high degree of quality. 
-We use [recipes](https://sundaylettersfromsam.substack.com/p/what-is-an-ai-recipe) to develop specialized evaluation workflows that score conversations on 
-dimensions such as how well the assistant adhered to user preferences or if they did not generate any hallucinations.
+Eval Recipes is an library dedicated to make it easier to keep up with the state-of-the-art in evaluating AI agents.
+It currently has two main components: a **benchmarking** harness for evaluating CLI agents (GitHub Copilot CLI, Claude Code, etc) on real-world tasks via containers and an **online evaluation** framework for LLM chat assistants.
+The common thread between these components is the concept of [recipes](https://sundaylettersfromsam.substack.com/p/what-is-an-ai-recipe) 
+which are a mix of code and LLM calls to achieve a desired tradeoff between flexibility and quality.
+
+
+# Benchmarking
+
+Eval Recipes provides a benchmarking harness for evaluating AI agents on real-world tasks in isolated Docker containers.
+We have a few sample tasks ranging from creating CLI applications to automations. Agents are automatically scored based on deterministic and semantic tests using a specialized auditing agent.
+
+Additional features include agent continuation (automatically providing follow-up prompts when needed), multi-trial evaluation for consistency measurement, and reporting with HTML dashboards.
+
+
+## Running Benchmarks
+
+```bash
+# The default agents/tasks require these environment variables. Check the agent definitions for others.
+export ANTHROPIC_API_KEY=your_anthropic_key
+export OPENAI_API_KEY=your_openai_key
+
+uv run scripts/run_benchmarks.py --num-trials 2
+
+# Get more info about available arguments
+uv run scripts/run_benchmarks.py --help
+```
+
+Results are saved to timestamped directories in `data/benchmarking/runs/` containing agent logs, test outputs, timing data, and structured results.
+Any of these files may contain secrets that were used during the evaluation run. **NEVER** commit these files to source control without first checking for secrets.
+For detailed documentation on creating custom agents and tasks, see [BENCHMARKING.md](./docs/BENCHMARKING.md).
+
+
+# Online Evaluations
 
 ![Eval Recipes Animation](demos/data/EvalRecipesAnimation.gif)
-
 
 ## Get Started Quick!
 
@@ -165,29 +194,6 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
-
-
-## Benchmarking
-
-Eval Recipes provides a benchmarking harness for evaluating AI agents on real-world tasks in isolated Docker containers. 
-We have a few sample tasks ranging from creating CLI applications to automations. Agents are automatically scored based on deterministic and semantic tests.
-
-### Running Benchmarks
-
-```bash
-# The default agents/tasks require these environment variables
-export ANTHROPIC_API_KEY=your_anthropic_key
-export OPENAI_API_KEY=your_openai_key
-
-uv run scripts/run_benchmarks.py
-
-# Get more info about available arguments
-uv run scripts/run_benchmarks.py --help
-```
-
-Results are saved to timestamped directories in `data/benchmarking/runs/` containing agent logs, test outputs, and structured results.
-Any of these files may contain secrets that were used during the evaluation run. **NEVER** commit these files to source control without first checking for secrets.
-For detailed documentation on creating custom agents and tasks, see [BENCHMARKING.md](./docs/BENCHMARKING.md).
 
 
 ## Development Installation
@@ -534,7 +540,7 @@ The goal of the module is to produce a final report that details how well each a
 The core of the module is a harness that uses agent definitions (defaults in `data/agents/`) 
 and task definitions (defaults in `data/tasks/`) to run agents on tasks, each their own isolated Docker containers.
 After each agent has been run on a task, the task's `test.py` script is executed to validate the agent's solution and produce a score.
-For each agent-task pair that scores below 85%, a report is generated that analyzes what went wrong.
+For each agent-task pair that scores below a threshold, a report is generated that analyzes what went wrong.
 Finally, these individual reports are rolled up into a final report for each agent.
 
 
@@ -573,9 +579,11 @@ Included agents are located in [data/agents/](../data/agents/).
 
 ```
 data/agents/your_agent_name/
-agent.yaml            # Agent configuration
-install.dockerfile    # Docker commands to install the agent
-command_template.txt  # Liquid template for the command to run the agent
+agent.yaml                     # Agent configuration
+install.dockerfile             # Docker commands to install the agent
+command_template.txt           # Liquid template for the command to run the agent
+command_template_continue.txt  # (Optional) Template for agent continuation when follow-up is needed. This command must continue from the previous session/conversation.
+data/                          # (Optional) Agent-specific data files
 ```
 
 See [data/agents/gh_cli/](../data/agents/gh_cli/) for an example agent definition.
@@ -649,9 +657,13 @@ Required fields:
   - `difficulty`: One of `easy`, `medium`, or `hard`
   - `non_deterministic_evals`: Boolean indicating if test evaluations are non-deterministic (e.g., semantic tests using LLMs)
 
+Optional task_info fields:
+- `categories`: List of strings categorizing the task (e.g., `["cli", "automation"]`)
+
 Optional fields:
 - `required_env_vars`: List of environment variables required for the task (e.g., API keys for evaluation)
 - `test_command`: Command to run the test script (default: `uv run --no-project /project/test.py`)
+- `timeout`: Timeout in seconds for agent execution
 
 #### `setup.dockerfile` (Optional)
 
@@ -686,6 +698,40 @@ See **[data/tasks/style_blender/test.py](../data/tasks/style_blender/test.py)** 
 Two slash commands are available to help create high-quality benchmark tasks:
 - [`/create-benchmark-test`](../.claude/commands/create-benchmark-test.md) - Guides you through creating a complete new benchmark task
 - [`/create-semantic-tests`](../.claude/commands/create-semantic-tests.md) - Helps design semantic tests for a task
+
+
+## Multi-Trial Evaluation
+
+The harness supports running multiple trials of the same agent-task pair to measure consistency and reliability. Use `--num-trials N` to run each task N times.
+Results are aggregated with statistics including mean, median, standard deviation, minimum, and maximum scores.
+Each trial is stored in a separate subdirectory (`trial_1`, `trial_2`, etc.) within the results directory, and an `aggregated_results.json` file contains the statistical summary.
+
+
+## Command-Line Options
+
+The `scripts/run_benchmarks.py` script accepts the following options:
+
+- `--agents-dir`: Path to agents directory (default: `data/agents/`)
+- `--tasks-dir`: Path to tasks directory (default: `data/tasks/`)
+- `--runs-dir`: Output directory for results (default: `.benchmark_results`)
+- `--agent-filter`: Filter agents by field (format: `field=value`, `field!=value`, or `field=val1,val2` for multiple)
+- `--task-filter`: Filter tasks by field (same format as agent-filter)
+- `--generate-reports`: Generate failure analysis reports (default: True)
+- `--max-parallel-tasks`: Maximum number of tasks to run in parallel (default: 22)
+- `--num-trials`: Number of trials per agent-task pair (default: 2)
+- `--enable-agent-continuation/--disable-agent-continuation`: Toggle agent continuation feature (default: enabled)
+- `--report-score-threshold`: Score threshold for generating failure reports (default: 85.0)
+
+
+## Results
+
+Results include detailed metrics:
+- **Scores**: Task-specific scores from test scripts
+- **Timing**: Agent execution duration and test execution duration
+- **Reports**: Three types of reports are generated:
+  - **Trial failure reports**: Individual analysis for each trial scoring below the threshold
+  - **Consolidated reports**: Per-agent summary of all failures
+  - **HTML reports**: Interactive dashboards with tabbed interface showing overview, task catalog, and per-agent detailed results
 
 ## Notes
 
@@ -896,6 +942,17 @@ load_dotenv()
     default=1,
     help="Number of times to run each task",
 )
+@click.option(
+    "--enable-agent-continuation/--disable-agent-continuation",
+    default=True,
+    help="Enable or disable agent continuation checks",
+)
+@click.option(
+    "--report-score-threshold",
+    type=float,
+    default=85.0,
+    help="Minimum score threshold to skip report generation (reports generated for scores below this)",
+)
 def main(
     agents_dir: Path,
     tasks_dir: Path,
@@ -905,6 +962,8 @@ def main(
     generate_reports: bool,
     max_parallel_tasks: int,
     num_trials: int,
+    enable_agent_continuation: bool,
+    report_score_threshold: float,
 ) -> None:
     """Run benchmarks for LLM agents."""
     harness = Harness(
@@ -921,6 +980,8 @@ def main(
         task_filters=list(task_filters) if task_filters else None,
         max_parallel_tasks=max_parallel_tasks,
         num_trials=num_trials,
+        enable_agent_continuation=enable_agent_continuation,
+        report_score_threshold=report_score_threshold,
     )
     asyncio.run(harness.run(generate_reports=generate_reports))
 
