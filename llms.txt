@@ -975,6 +975,7 @@ def main(
             "OPENAI_API_KEY": os.environ["OPENAI_API_KEY"],
             "GITHUB_TOKEN": os.environ.get("GITHUB_TOKEN", ""),
             "AZURE_OPENAI_ENDPOINT": os.environ.get("AZURE_OPENAI_ENDPOINT", ""),
+            "AZURE_OPENAI_VERSION": os.environ.get("AZURE_OPENAI_VERSION", ""),
         },
         agent_filters=list(agent_filters) if agent_filters else None,
         task_filters=list(task_filters) if task_filters else None,
