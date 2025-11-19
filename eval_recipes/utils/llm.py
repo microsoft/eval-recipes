@@ -30,10 +30,11 @@ async def create_client(
                 raise ValueError("AZURE_OPENAI_ENDPOINT environment variable is required for Azure OpenAI")
 
             azure_api_key = os.environ.get("AZURE_OPENAI_API_KEY")
+            azure_endpoint_version = os.environ.get("AZURE_OPENAI_VERSION", "2024-10-01-preview")
             if azure_api_key:
                 client = AsyncAzureOpenAI(
                     api_key=azure_api_key,
-                    api_version="2025-03-01-preview",
+                    api_version=azure_endpoint_version,
                     azure_endpoint=azure_endpoint,
                     http_client=DefaultAioHttpClient(),
                 )
@@ -45,7 +46,7 @@ async def create_client(
                 client = AsyncAzureOpenAI(
                     azure_endpoint=azure_endpoint,
                     azure_ad_token_provider=token_provider,
-                    api_version="2025-03-01-preview",
+                    api_version=azure_endpoint_version,
                     http_client=DefaultAioHttpClient(),
                 )
         case _:
