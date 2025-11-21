@@ -1,3 +1,5 @@
+from typing import Literal
+
 from liquid import render
 from openai.types.shared_params.reasoning import Reasoning
 from pydantic import BaseModel, Field
@@ -48,9 +50,17 @@ class ResponseToAgent(BaseModel):
 async def interact_with_agent(
     agent_log: str,
     task_instructions: str,
+    provider: Literal["openai", "azure_openai"] = "openai",
+    model: Literal["gpt-5", "gpt-5.1"] = "gpt-5",
 ) -> str:
     """
-    Sends a prompt to gpt-5 to have it either generate a response to the agent (as the "user") or to choose to not reply.
+    Sends a prompt to an LLM to have it either generate a response to the agent (as the "user") or to choose to not reply.
+
+    Args:
+        agent_log: The log of the agent's execution
+        task_instructions: The original task instructions
+        provider: The LLM provider to use (openai or azure_openai)
+        model: The model to use for continuation decision
     """
 
     user_prompt = render(INTERACTION_USER_PROMPT, task_instructions=task_instructions, agent_log=agent_log)
@@ -59,9 +69,9 @@ async def interact_with_agent(
         {"role": "user", "content": user_prompt},
     ]
 
-    async with create_client(provider="openai") as client:
+    async with create_client(provider=provider) as client:
         response = await client.responses.parse(
-            model="gpt-5",
+            model=model,
             input=messages,
             text_format=ResponseToAgent,
             reasoning=Reasoning(

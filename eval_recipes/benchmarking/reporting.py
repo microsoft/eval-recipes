@@ -1,3 +1,4 @@
+import contextlib
 import inspect
 import json
 import os
@@ -29,9 +30,6 @@ The tests can be either deterministic or semantic (in that they use a highly spe
 - test_results.json contains higher level information about the outcome of the tests including the final score that was given.
 test.py will often call a semantic test function, this is its signature so that you understand how it works:
 {{semantic_test_signature}}
-
-It can also call other evaluation recipes from the eval_recipes package, this is the high level README of what it can do:
-{{eval_recipes_readme}}
 
 IMPORTANT: The files provided can be VERY LONG. You MUST:
 1. Read files incrementally (use offset/limit with Read tool)
@@ -92,7 +90,7 @@ async def generate_task_report(
     instructions_file = task_directory / "instructions.txt"
     if not instructions_file.exists():
         raise FileNotFoundError(f"Instructions file not found: {instructions_file}")
-    task_instructions = instructions_file.read_text()
+    task_instructions = instructions_file.read_text(encoding="utf-8")
 
     # Check if this is a multi-trial run by looking for aggregated_results.json
     aggregated_results_path = benchmark_output_dir / "aggregated_results.json"
@@ -101,17 +99,13 @@ async def generate_task_report(
         return
 
     # Load aggregated results to find which trials need reports
-    with aggregated_results_path.open() as f:
+    with aggregated_results_path.open(encoding="utf-8") as f:
         aggregated_data = json.load(f)
 
     trials_data = aggregated_data.get("trials", [])
     if not trials_data:
         logger.warning(f"No trials found in aggregated results for {benchmark_output_dir}")
         return
-
-    # Read LOW_LEVEL_API.md for eval_recipes context
-    low_level_api_path = Path(__file__).parents[2] / "docs" / "LOW_LEVEL_API.md"
-    eval_recipes_readme = low_level_api_path.read_text() if low_level_api_path.exists() else "Not available"
 
     # Get semantic_test signature dynamically using inspect
     semantic_test_signature = inspect.getsource(semantic_test).split("\n\n")[0]  # Get function def and docstring
@@ -120,7 +114,6 @@ async def generate_task_report(
     rendered_system_prompt = render(
         TASK_REPORT_SYSTEM_PROMPT,
         semantic_test_signature=semantic_test_signature,
-        eval_recipes_readme=eval_recipes_readme,
     )
 
     # Generate reports for each non-perfect trial
@@ -156,6 +149,19 @@ async def generate_task_report(
                 if source_path.exists():
                     dest_path = temp_dir / dest_name
                     shutil.copy2(source_path, dest_path)
+
+            # Create AGENTS.md with @reference to eval_recipes documentation
+            agents_md_content = """# Evaluation Recipes Documentation
+
+@eval_recipes_readme.md"""
+            agents_md_path = temp_dir / "AGENTS.md"
+            agents_md_path.write_text(agents_md_content, encoding="utf-8")
+
+            # Copy LOW_LEVEL_API.md as eval_recipes_readme.md
+            low_level_api_path = Path(__file__).parents[2] / "docs" / "LOW_LEVEL_API.md"
+            if low_level_api_path.exists():
+                eval_recipes_readme_path = temp_dir / "eval_recipes_readme.md"
+                eval_recipes_readme_path.write_text(low_level_api_path.read_text(encoding="utf-8"), encoding="utf-8")
 
             # Update prompt to include trial context
             task_report_prompt = render(
@@ -195,7 +201,7 @@ async def generate_task_report(
             # Get the report from the temp dir and move it to the trial directory
             report_path = temp_dir / "FAILURE_REPORT.md"
             if report_path.exists():
-                generated_content = report_path.read_text()
+                generated_content = report_path.read_text(encoding="utf-8")
                 # Prepend metadata header to each report
                 metadata_header = f"""---
 **Task**: {task_name}
@@ -207,11 +213,13 @@ async def generate_task_report(
                 final_content = metadata_header + generated_content
 
                 output_path = trial_dir / f"FAILURE_REPORT_trial_{trial_number}.md"
-                output_path.write_text(final_content)
+                output_path.write_text(final_content, encoding="utf-8")
                 logger.info(f"Failure report for trial {trial_number} saved to: {output_path}")
         finally:
             if temp_dir.exists():
-                shutil.rmtree(temp_dir)
+                # Best effort cleanup
+                with contextlib.suppress(Exception):
+                    shutil.rmtree(temp_dir)
 
 
 CONSOLIDATED_REPORT_SYSTEM_PROMPT = """You are an expert at synthesizing benchmark failure analysis reports and you will be synthesizing across many such reports. \
@@ -385,7 +393,7 @@ async def generate_summary_report(benchmarks_output_dir: Path) -> None:
         # Collect all failure reports for this agent
         failure_reports = []
         for run_dir_name, report_path in reports:
-            content = report_path.read_text()
+            content = report_path.read_text(encoding="utf-8")
             failure_reports.append(f"## Report for Task: {run_dir_name}\n\n{content}\n\n{'=' * 80}\n")
 
         temp_dir = Path(tempfile.mkdtemp(prefix=f"benchmark_consolidated_report_{agent_name}_"))
@@ -432,9 +440,12 @@ async def generate_summary_report(benchmarks_output_dir: Path) -> None:
                 # Create a placeholder
                 output_path = benchmarks_output_dir / f"CONSOLIDATED_REPORT_{agent_name}.md"
                 output_path.write_text(
-                    f"# Consolidated Report for {agent_name}\n\nNo report was generated. Check the logs for details.\n"
+                    f"# Consolidated Report for {agent_name}\n\nNo report was generated. Check the logs for details.\n",
+                    encoding="utf-8",
                 )
 
         finally:
             if temp_dir.exists():
-                shutil.rmtree(temp_dir)
+                # Best effort cleanup
+                with contextlib.suppress(Exception):
+                    shutil.rmtree(temp_dir)

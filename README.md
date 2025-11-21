@@ -13,6 +13,9 @@ We have a few sample tasks ranging from creating CLI applications to automations
 
 Additional features include agent continuation (automatically providing follow-up prompts when needed), multi-trial evaluation for consistency measurement, and reporting with HTML dashboards.
 
+## Run Benchmarks Quickly
+
+Check [BENCHMARKING.md](./docs/BENCHMARKING.md), currently running benchmarks requires some additional setup.
 
 ## Running Benchmarks
 
@@ -59,7 +62,7 @@ uv pip install "git+https://github.com/microsoft/eval-recipes"
 ```
 
 > [!WARNING]
-> This library is very early and everything is subject to change. Consider pinning the dependency to a commit with the command like: `uv pip install "git+https://github.com/microsoft/eval-recipes@v0.0.18"`
+> This library is very early and everything is subject to change. Consider pinning the dependency to a commit with the command like: `uv pip install "git+https://github.com/microsoft/eval-recipes@v0.0.19"`
 
 
 ## High Level API

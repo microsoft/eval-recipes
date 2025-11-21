@@ -14,13 +14,23 @@ Finally, these individual reports are rolled up into a final report for each age
 ## Prerequisites
 
 - [uv](https://docs.astral.sh/uv/getting-started/installation/)
-- [Docker](https://docs.docker.com/engine/install/ubuntu/)
-  - After installing, ensure your user has docker permissions by running:
+- Install [Docker Desktop](https://docs.docker.com/desktop/) for work on systems running Windows or [Docker Engine](https://docs.docker.com/engine/install/ubuntu/) on setups like WSL 2.
+  - After installing Docker Engine on WSL 2, ensure your user has docker permissions by running:
     - `sudo usermod -aG docker $USER`
     - `newgrp docker`
-- Claude Agent SDK which requires [Claude Code](https://docs.claude.com/en/docs/claude-code/overview)
-- ANTHROPIC_API_KEY for the Claude Agent SDK.
+- The Claude Agent SDK which requires setting up [Claude Code](https://docs.claude.com/en/docs/claude-code/overview)
+- [`ANTHROPIC_API_KEY`](https://platform.claude.com/docs/en/get-started) for the Claude Agent SDK.
+- [`OPENAI_API_KEY`](hhttps://platform.openai.com/api-keys) if using agent continuation (see parameters below, or running tasks that requires it as a dependency).
 
+## Installation
+
+```bash
+# If you have make installed:
+make install
+
+# If not, you can manually setup the uv environment:
+uv lock --upgrade && uv sync --all-extras --group dev
+```
 
 ## Running Benchmarks
 
@@ -30,11 +40,11 @@ The benchmarking harness is available via the CLI script `scripts/run_benchmarks
 
 ```bash
 # Make sure your .env file is setup according to .env.sample
-# Run all agents on all tasks, by default this will use the existing data/agents/ and data/tasks/ directories
-uv run scripts/run_benchmarks.py --max-parallel-tasks 3
+uv run scripts/run_benchmarks.py --agent-filter name=claude_code --task-filter name=cpsc_recall_monitor,arxiv_conclusion_extraction,email_drafting --max-parallel-trials 6  --num-trials 2 --continuation-provider openai
 
-# You can also specify various filters
-uv run scripts/run_benchmarks.py --agent-filter name=claude_code --task-filter name=your_task_name
+# Command for a typical full benchmark run
+# sec_10q_extractor is excluded due to most all agents failing at it.
+uv run scripts/run_benchmarks.py --agent-filter name=amplifier_v1,amplifier_v2_toolkit,claude_code,gh_cli,openai_codex --task-filter name!=sec_10q_extractor --max-parallel-trials 20  --num-trials 5 --continuation-provider openai
 ```
 
 
@@ -129,7 +139,7 @@ Optional task_info fields:
 
 Optional fields:
 - `required_env_vars`: List of environment variables required for the task (e.g., API keys for evaluation)
-- `test_command`: Command to run the test script (default: `uv run --no-project /project/test.py`)
+- `test_command`: Command to run the test script
 - `timeout`: Timeout in seconds for agent execution
 
 #### `setup.dockerfile` (Optional)
@@ -178,16 +188,17 @@ Each trial is stored in a separate subdirectory (`trial_1`, `trial_2`, etc.) wit
 
 The `scripts/run_benchmarks.py` script accepts the following options:
 
-- `--agents-dir`: Path to agents directory (default: `data/agents/`)
-- `--tasks-dir`: Path to tasks directory (default: `data/tasks/`)
-- `--runs-dir`: Output directory for results (default: `.benchmark_results`)
+- `--agents-dir`: Path to agents directory
+- `--tasks-dir`: Path to tasks directory
+- `--runs-dir`: Output directory for results
 - `--agent-filter`: Filter agents by field (format: `field=value`, `field!=value`, or `field=val1,val2` for multiple)
 - `--task-filter`: Filter tasks by field (same format as agent-filter)
-- `--generate-reports`: Generate failure analysis reports (default: True)
-- `--max-parallel-tasks`: Maximum number of tasks to run in parallel (default: 22)
-- `--num-trials`: Number of trials per agent-task pair (default: 2)
-- `--enable-agent-continuation/--disable-agent-continuation`: Toggle agent continuation feature (default: enabled)
-- `--report-score-threshold`: Score threshold for generating failure reports (default: 85.0)
+- `--generate-reports`: Generate failure analysis reports
+- `--max-parallel-trials`: Maximum number of trials to run in parallel
+- `--num-trials`: Number of trials per agent-task pair
+- `--continuation-provider`: LLM provider for agent continuation - `openai`, `azure_openai`, or `none` to disable
+- `--continuation-model`: Model to use for agent continuation decisions - `gpt-5` or `gpt-5.1`
+- `--report-score-threshold`: Score threshold for generating failure reports
 
 
 ## Results

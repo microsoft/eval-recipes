@@ -78,7 +78,7 @@ def _load_task_results(benchmarks_output_dir: Path, tasks_directory: Path) -> li
         if not aggregated_results_path.exists():
             continue
 
-        with aggregated_results_path.open() as f:
+        with aggregated_results_path.open(encoding="utf-8") as f:
             aggregated_data = json.load(f)
 
         mean_score = aggregated_data.get("mean_score", 0.0)
@@ -105,7 +105,7 @@ def _load_task_results(benchmarks_output_dir: Path, tasks_directory: Path) -> li
         task_yaml_data = {}
         task_yaml_path = task_dir_path / "task.yaml"
         if task_yaml_path.exists():
-            with task_yaml_path.open() as f:
+            with task_yaml_path.open(encoding="utf-8") as f:
                 task_yaml_data = yaml.safe_load(f) or {}
 
         # Attach failure reports to each trial
@@ -1852,5 +1852,5 @@ def create_html_report(benchmarks_output_dir: Path, tasks_directory: Path, outpu
     if output_path is None:
         output_path = benchmarks_output_dir / "benchmark_report.html"
 
-    output_path.write_text(html_content)
+    output_path.write_text(html_content, encoding="utf-8")
     print(f"Report generated: {output_path}")

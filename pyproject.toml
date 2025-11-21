@@ -1,6 +1,6 @@
 [project]
 name = "eval_recipes"
-version = "0.0.18"
+version = "0.0.19"
 description = "Eval Recipes"
 authors = [{ name = "Semantic Workbench Team" }]
 readme = "README.md"
@@ -107,5 +107,5 @@ auto_instantiate=false
 on_cell_change="lazy"
 
 [tool.pyright]
-ignore = ["demos", "ai_context"]
+ignore = ["demos", "ai_context", "scripts/create_animation.py"]
 typeCheckingMode = "standard"

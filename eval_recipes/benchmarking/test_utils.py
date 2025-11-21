@@ -29,7 +29,7 @@ def write_test_result(output_dir: Path, test_id: str, score: float, metadata: di
 
     result_file = output_dir / f".eval_recipes_test_results_{test_id}.json"
     result = {"score": score, "metadata": metadata}
-    result_file.write_text(json.dumps(result, indent=2))
+    result_file.write_text(json.dumps(result, indent=2), encoding="utf-8")
 
 
 def levenshtein_distance(s1: str, s2: str) -> int:
