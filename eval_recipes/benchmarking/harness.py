@@ -4,9 +4,10 @@ import asyncio
 from datetime import UTC, datetime
 import json
 from pathlib import Path
+import platform
 import statistics
 import time
-from typing import Any
+from typing import Any, Literal
 import uuid
 
 from liquid import Template
@@ -32,11 +33,13 @@ class Harness:
         environment: dict[str, str] | None = None,
         agent_filters: list[str] | None = None,
         task_filters: list[str] | None = None,
-        max_parallel_tasks: int = 5,
+        max_parallel_trials: int = 5,
         num_trials: int = 1,
-        enable_agent_continuation: bool = True,
+        continuation_provider: Literal["openai", "azure_openai", "none"] = "openai",
+        continuation_model: Literal["gpt-5", "gpt-5.1"] = "gpt-5",
         report_score_threshold: float = 85.0,
-        eval_recipes_version: str = "0.0.18",
+        report_max_parallel: int | None = None,
+        eval_recipes_version: str = "0.0.19",
     ) -> None:
         """
         Initialize the benchmark harness.
@@ -49,10 +52,12 @@ class Harness:
             environment: Environment variables to pass to containers
             agent_filters: Optional list of filter strings for agents (e.g., ['name=claude_code'])
             task_filters: Optional list of filter strings for tasks (e.g., ['difficulty=medium'])
-            max_parallel_tasks: Maximum number of tasks to run in parallel
+            max_parallel_trials: Maximum number of trials to run in parallel
             num_trials: Number of times to run each task
-            enable_agent_continuation: Enable agent continuation checks (default: True)
+            continuation_provider: LLM provider for agent continuation ("openai", "azure_openai", or "none" to disable)
+            continuation_model: Model to use for agent continuation decisions
             report_score_threshold: Minimum score threshold to skip report generation (default: 85.0)
+            report_max_parallel: Maximum parallel report generation (default: None = auto-detect based on platform)
             eval_recipes_version: Version of eval_recipes to install from GitHub for testing
         """
         repo_root = Path(__file__).parents[2]
@@ -69,10 +74,18 @@ class Harness:
         self.environment = environment or {}
         self.agent_filters = agent_filters
         self.task_filters = task_filters
-        self.max_parallel_tasks = max_parallel_tasks
+        self.max_parallel_trials = max_parallel_trials
         self.num_trials = num_trials
-        self.enable_agent_continuation = enable_agent_continuation
+        self.continuation_provider = continuation_provider
+        self.continuation_model = continuation_model
         self.report_score_threshold = report_score_threshold
+
+        # Auto-detect report parallelism based on platform if not specified
+        # Windows has issues with Claude Agent SDK subprocess initialization in parallel
+        if report_max_parallel is None:
+            self.report_max_parallel = 1 if platform.system() == "Windows" else max_parallel_trials
+        else:
+            self.report_max_parallel = report_max_parallel
 
         self.eval_recipes_version = eval_recipes_version
 
@@ -98,7 +111,7 @@ class Harness:
             if not install_file.exists() or not command_template_file.exists() or not agent_yaml_file.exists():
                 continue
 
-            with agent_yaml_file.open() as f:
+            with agent_yaml_file.open(encoding="utf-8") as f:
                 agent_yaml = yaml.safe_load(f) or {}
 
             # Handle local_source_path if specified
@@ -161,7 +174,7 @@ class Harness:
             if not instructions_file.exists() or not test_script.exists() or not task_yaml_file.exists():
                 continue
 
-            with task_yaml_file.open() as f:
+            with task_yaml_file.open(encoding="utf-8") as f:
                 task_yaml = yaml.safe_load(f) or {}
 
             task_info_data = task_yaml.get("task_info")
@@ -249,7 +262,7 @@ class Harness:
         gitignore_path = directory / ".gitignore"
         if gitignore_path.exists():
             try:
-                with gitignore_path.open() as f:
+                with gitignore_path.open(encoding="utf-8") as f:
                     gitignore_spec = pathspec.PathSpec.from_lines("gitwildmatch", f)
                 logger.debug(f"Loaded .gitignore from {gitignore_path}")
             except Exception as e:
@@ -413,7 +426,7 @@ class Harness:
                     test_duration_seconds=test_duration,
                 )
                 results_file = run_dir / "test_results.json"
-                results_file.write_text(json.dumps(result_data, indent=2))
+                results_file.write_text(json.dumps(result_data, indent=2), encoding="utf-8")
                 logger.info(f"Test score: {trial_result.score}, metadata: {trial_result.metadata}")
                 return trial_result
             else:
@@ -433,219 +446,174 @@ class Harness:
             logger.error(f"Failed to run tests: {e}")
             return None
 
-    def _run_single_task_sync(
-        self, agent: AgentConfig, task: TaskConfig
-    ) -> tuple[Path, Path, str] | tuple[None, None, str]:
+    def _run_single_trial(
+        self, agent: AgentConfig, task: TaskConfig, trial_num: int, base_run_dir: Path
+    ) -> TrialResult | None:
         """
-        Synchronous implementation of running a single task with multiple trials.
+        Run a single trial for an agent-task pair.
 
         Args:
             agent: Agent configuration
             task: Task configuration
+            trial_num: Trial number (1-indexed)
+            base_run_dir: Base directory for this agent-task pair
 
         Returns:
-            Tuple of (base_run_dir, task_dir_path, task_name) if successful, (None, None, task_name) otherwise
+            TrialResult if successful, None otherwise
         """
         task_name = f"{agent.name} on {task.name}"
-        logger.info(f"Running agent '{agent.name}' on task '{task.name}' with {self.num_trials} trial(s)")
+        logger.info(f"Starting trial {trial_num} for {task_name}")
+        trial_dir = base_run_dir / f"trial_{trial_num}"
+        trial_dir.mkdir(parents=True, exist_ok=True)
 
-        valid, missing_vars = self._validate_required_env_vars(agent, task)
-        if not valid:
-            logger.error(
-                f"Missing required environment variables for agent '{agent.name}' "
-                f"and task '{task.name}': {missing_vars}"
-            )
-            return None, None, task_name
+        container_env = self._get_container_env_vars(agent, task)
+        dockerfile_content = self._build_dockerfile(agent, task)
+        image_tag = f"benchmark-{agent.name}-{task.name}-trial{trial_num}".lower()
 
-        # Create base directory for this agent-task pair
-        base_run_dir = self.runs_dir / f"{agent.name}_{task.name}"
-        base_run_dir.mkdir(parents=True, exist_ok=True)
-        task_dir_path = self.tasks_dir / task.name
+        # Collect local source files if agent uses local source
+        build_context_files: dict[str, bytes] = {}
+        if agent.local_source_path:
+            logger.info(f"Collecting local source files from {agent.local_source_path}")
+            local_source_files = self._collect_directory_files(agent.local_source_path)
+            # Add files with agent_source/ prefix so they match COPY command in Dockerfile
+            for file_path, content in local_source_files.items():
+                build_context_files[f"agent_source/{file_path}"] = content
+            logger.info(f"Collected {len(local_source_files)} file(s) from local source")
 
-        trial_results: list[TrialResult] = []
-        for trial_num in range(1, self.num_trials + 1):
-            logger.info(f"Starting trial {trial_num}/{self.num_trials} for {task_name}")
-            trial_dir = base_run_dir / f"trial_{trial_num}"
-            trial_dir.mkdir(parents=True, exist_ok=True)
+        with DockerManager(
+            log_dir=trial_dir,
+            dockerfile=dockerfile_content,
+            image_tag=image_tag,
+            container_env=container_env,
+            build_context_files=build_context_files,
+        ) as docker_manager:
+            assert docker_manager.container is not None
+            logger.info(f"Built image: {docker_manager.actual_image_tag}")
+            logger.info(f"Container {docker_manager.container_id} started for trial {trial_num}")
 
-            container_env = self._get_container_env_vars(agent, task)
-            dockerfile_content = self._build_dockerfile(agent, task)
-            image_tag = f"benchmark-{agent.name}-{task.name}-trial{trial_num}".lower()
-
-            # Collect local source files if agent uses local source
-            build_context_files: dict[str, bytes] = {}
-            if agent.local_source_path:
-                logger.info(f"Collecting local source files from {agent.local_source_path}")
-                local_source_files = self._collect_directory_files(agent.local_source_path)
-                # Add files with agent_source/ prefix so they match COPY command in Dockerfile
-                for file_path, content in local_source_files.items():
-                    build_context_files[f"agent_source/{file_path}"] = content
-                logger.info(f"Collected {len(local_source_files)} file(s) from local source")
-
-            with DockerManager(
-                log_dir=trial_dir,
-                dockerfile=dockerfile_content,
-                image_tag=image_tag,
-                container_env=container_env,
-                build_context_files=build_context_files,
-            ) as docker_manager:
-                assert docker_manager.container is not None
-                logger.info(f"Built image: {docker_manager.actual_image_tag}")
-                logger.info(f"Container {docker_manager.container_id} started for trial {trial_num}")
-
-                # Copy agent data directory if it exists
-                if agent.data_dir and agent.data_dir.exists():
-                    logger.info(f"Copying agent data directory from {agent.data_dir} to container")
-                    agent_data_files = self._collect_directory_files(agent.data_dir)
-                    if agent_data_files:
-                        docker_manager.copy_files_to_container(
-                            container=docker_manager.container,
-                            files=agent_data_files,
-                            dest_path="/project",
-                        )
-
-                # Create command to run agent
-                escaped_instructions = escape_bash_string(task.instructions)
-                command_template = Template(agent.command_template)
-                command = command_template.render(task_instructions=escaped_instructions)
-                logger.info(f"Executing command for trial {trial_num}: {command}")
-
-                # Track agent execution time
-                agent_start_time = time.perf_counter()
-                _exec_result, _exec_logs = docker_manager.exec_command(
-                    container=docker_manager.container,
-                    command=["bash", "-c", command],
-                    log_filename="agent_output.log",
-                    timeout=1800,
-                )
-                agent_duration = time.perf_counter() - agent_start_time
-                logger.info(
-                    f"Trial {trial_num} command execution completed. Output saved to: {trial_dir / 'agent_output.log'}"
-                )
-
-                # Check if agent needs continuation
-                continuation_metadata: dict[str, Any] = {}
-                if self.enable_agent_continuation and agent.command_template_continue is not None:
-                    try:
-                        continuation_response = asyncio.run(
-                            interact_with_agent(agent_log=_exec_logs, task_instructions=task.instructions)
-                        )
-
-                        if continuation_response:
-                            continuation_metadata["continuation_occurred"] = True
-
-                            # Render continuation command template
-                            escaped_response = escape_bash_string(continuation_response)
-                            continuation_template = Template(agent.command_template_continue)
-                            continuation_command = continuation_template.render(task_instructions=escaped_response)
-
-                            logger.info(f"Executing continuation command: {continuation_command}")
-
-                            try:
-                                # Execute continuation (use different log name temporarily)
-                                continuation_start = time.perf_counter()
-                                _continuation_result, continuation_logs = docker_manager.exec_command(
-                                    container=docker_manager.container,
-                                    command=["bash", "-c", continuation_command],
-                                    log_filename="agent_continuation.log",
-                                    timeout=1800,
-                                )
-                                continuation_duration = time.perf_counter() - continuation_start
-
-                                # Append continuation logs to main agent_output.log
-                                agent_log_path = trial_dir / "agent_output.log"
-                                with agent_log_path.open("a") as f:
-                                    f.write("\n\n--- CONTINUATION ---\n\n")
-                                    f.write(continuation_logs)
-
-                                agent_duration += continuation_duration
-
-                            except Exception as e:
-                                logger.error(f"Failed to execute continuation command: {e}")
-                                continuation_metadata["continuation_error"] = str(e)
-                                # Still append error to log
-                                agent_log_path = trial_dir / "agent_output.log"
-                                with agent_log_path.open("a") as f:
-                                    f.write(f"\n\n--- CONTINUATION FAILED ---\n{e}\n")
-                        else:
-                            logger.info("No continuation needed - agent task appears complete")
-                            continuation_metadata["continuation_occurred"] = False
-
-                    except Exception as e:
-                        logger.error(f"Failed to check if agent needs continuation: {e}")
-                        continuation_metadata["continuation_check_error"] = str(e)
-                else:
-                    if not self.enable_agent_continuation:
-                        logger.info("Agent continuation is disabled")
-                    else:
-                        logger.info("Agent does not have a continuation template - skipping continuation check")
-                    continuation_metadata["continuation_disabled"] = True
-
-                # Run tests for this trial
-                trial_result = self._run_tests(
-                    docker_manager.container,
-                    task,
-                    trial_dir,
-                    docker_manager,
-                    trial_num,
-                    agent_duration,
-                    continuation_metadata,
-                )
-
-                # Add trial result to list
-                if trial_result:
-                    trial_results.append(trial_result)
-                    logger.info(f"Trial {trial_num} completed with score: {trial_result.score}")
-                else:
-                    logger.warning(f"Trial {trial_num} failed to produce results")
-                    # Create a failed trial result
-                    failed_trial_result = TrialResult(
-                        trial_number=trial_num,
-                        score=0.0,
-                        metadata={"error": "Test execution failed"},
-                        test_output="",
-                        agent_duration_seconds=agent_duration,
-                        test_duration_seconds=None,
+            # Copy agent data directory if it exists
+            if agent.data_dir and agent.data_dir.exists():
+                logger.info(f"Copying agent data directory from {agent.data_dir} to container")
+                agent_data_files = self._collect_directory_files(agent.data_dir)
+                if agent_data_files:
+                    docker_manager.copy_files_to_container(
+                        container=docker_manager.container,
+                        files=agent_data_files,
+                        dest_path="/project",
                     )
-                    trial_results.append(failed_trial_result)
 
-        if trial_results:
-            aggregated_result = self._aggregate_trial_results(trial_results, task.name, agent.name)
+            # Create command to run agent
+            escaped_instructions = escape_bash_string(task.instructions)
+            command_template = Template(agent.command_template)
+            command = command_template.render(task_instructions=escaped_instructions)
+            logger.info(f"Executing command for trial {trial_num}: {command}")
 
-            # Write aggregated results to base directory
-            aggregated_file = base_run_dir / "aggregated_results.json"
-            aggregated_file.write_text(aggregated_result.model_dump_json(indent=2))
-            logger.info(
-                f"Aggregated results for {task_name}: mean={aggregated_result.mean_score:.1f}%, "
-                f"std_dev={aggregated_result.std_dev:.1f}%, range=[{aggregated_result.min_score:.1f}%, {aggregated_result.max_score:.1f}%]"
+            # Track agent execution time
+            agent_start_time = time.perf_counter()
+            _exec_result, _exec_logs = docker_manager.exec_command(
+                container=docker_manager.container,
+                command=["bash", "-c", command],
+                log_filename="agent_output.log",
+                timeout=1800,
             )
-        else:
-            logger.error(f"No trial results collected for {task_name}")
-            return None, None, task_name
+            agent_duration = time.perf_counter() - agent_start_time
+            logger.info(
+                f"Trial {trial_num} command execution completed. Output saved to: {trial_dir / 'agent_output.log'}"
+            )
 
-        return (base_run_dir, task_dir_path, task_name)
+            # Check if agent needs continuation
+            continuation_metadata: dict[str, Any] = {}
+            if self.continuation_provider != "none" and agent.command_template_continue is not None:
+                try:
+                    # Type narrowing: at this point, continuation_provider is either "openai" or "azure_openai"
+                    provider: Literal["openai", "azure_openai"] = self.continuation_provider  # type: ignore[assignment]
+                    model: Literal["gpt-5", "gpt-5.1"] = self.continuation_model  # type: ignore[assignment]
+                    continuation_response = asyncio.run(
+                        interact_with_agent(
+                            agent_log=_exec_logs,
+                            task_instructions=task.instructions,
+                            provider=provider,
+                            model=model,
+                        )
+                    )
 
-    async def _run_single_task(
-        self, agent: AgentConfig, task: TaskConfig, progress: Progress | None = None, task_id: TaskID | None = None
-    ) -> tuple[Path, Path] | None:
-        """
-        Run a single agent on a single task (async wrapper).
+                    if continuation_response:
+                        continuation_metadata["continuation_occurred"] = True
 
-        Args:
-            agent: Agent configuration
-            task: Task configuration
-            progress: Optional Rich progress instance for tracking
-            task_id: Optional progress task ID for updating
+                        # Render continuation command template
+                        escaped_response = escape_bash_string(continuation_response)
+                        continuation_template = Template(agent.command_template_continue)
+                        continuation_command = continuation_template.render(task_instructions=escaped_response)
 
-        Returns:
-            Tuple of (run_dir, task_dir_path) if successful, None otherwise
-        """
-        run_dir, task_dir_path, task_name = await asyncio.to_thread(self._run_single_task_sync, agent, task)
-        if progress and task_id is not None:
-            progress.update(task_id, advance=1, description=f"[green]✓[/green] Last completed: {task_name}")
-        if run_dir is None or task_dir_path is None:
-            return None
-        return (run_dir, task_dir_path)
+                        logger.info(f"Executing continuation command: {continuation_command}")
+
+                        try:
+                            # Execute continuation (use different log name temporarily)
+                            continuation_start = time.perf_counter()
+                            _continuation_result, continuation_logs = docker_manager.exec_command(
+                                container=docker_manager.container,
+                                command=["bash", "-c", continuation_command],
+                                log_filename="agent_continuation.log",
+                                timeout=1800,
+                            )
+                            continuation_duration = time.perf_counter() - continuation_start
+
+                            # Append continuation logs to main agent_output.log
+                            agent_log_path = trial_dir / "agent_output.log"
+                            with agent_log_path.open("a", encoding="utf-8") as f:
+                                f.write("\n\n--- CONTINUATION ---\n\n")
+                                f.write(continuation_logs)
+
+                            agent_duration += continuation_duration
+
+                        except Exception as e:
+                            logger.error(f"Failed to execute continuation command: {e}")
+                            continuation_metadata["continuation_error"] = str(e)
+                            # Still append error to log
+                            agent_log_path = trial_dir / "agent_output.log"
+                            with agent_log_path.open("a", encoding="utf-8") as f:
+                                f.write(f"\n\n--- CONTINUATION FAILED ---\n{e}\n")
+                    else:
+                        logger.info("No continuation needed - agent task appears complete")
+                        continuation_metadata["continuation_occurred"] = False
+
+                except Exception as e:
+                    logger.error(f"Failed to check if agent needs continuation: {e}")
+                    continuation_metadata["continuation_check_error"] = str(e)
+            else:
+                if self.continuation_provider == "none":
+                    logger.info("Agent continuation is disabled (continuation_provider='none')")
+                else:
+                    logger.info("Agent does not have a continuation template - skipping continuation check")
+                continuation_metadata["continuation_disabled"] = True
+
+            # Run tests for this trial
+            trial_result = self._run_tests(
+                docker_manager.container,
+                task,
+                trial_dir,
+                docker_manager,
+                trial_num,
+                agent_duration,
+                continuation_metadata,
+            )
+
+            # Return result or create failed result
+            if trial_result:
+                logger.info(f"Trial {trial_num} completed with score: {trial_result.score}")
+                return trial_result
+            else:
+                logger.warning(f"Trial {trial_num} failed to produce results")
+                # Create a failed trial result
+                failed_trial_result = TrialResult(
+                    trial_number=trial_num,
+                    score=0.0,
+                    metadata={"error": "Test execution failed"},
+                    test_output="",
+                    agent_duration_seconds=agent_duration,
+                    test_duration_seconds=None,
+                )
+                return failed_trial_result
 
     async def _generate_single_task_report(
         self,
@@ -695,41 +663,103 @@ class Harness:
         )
 
         with progress:
-            task_coroutines = []
+            # Create trial-level work items and prepare directories
+            trial_work_items: list[tuple[AgentConfig, TaskConfig, int, Path]] = []
+            base_run_dirs: dict[tuple[str, str], Path] = {}  # (agent_name, task_name) -> base_run_dir
+
             for agent in agents:
                 for task in tasks:
-                    task_coroutines.append((agent, task))
+                    # Validate required environment variables
+                    valid, missing_vars = self._validate_required_env_vars(agent, task)
+                    if not valid:
+                        logger.error(
+                            f"Missing required environment variables for agent '{agent.name}' "
+                            f"and task '{task.name}': {missing_vars}"
+                        )
+                        continue
 
-            task_progress_id = progress.add_task(
-                f"Running {len(task_coroutines)} task(s) with max parallelism of {self.max_parallel_tasks}",
-                total=len(task_coroutines),
+                    # Create base directory for this agent-task pair
+                    base_run_dir = self.runs_dir / f"{agent.name}_{task.name}"
+                    base_run_dir.mkdir(parents=True, exist_ok=True)
+                    base_run_dirs[(agent.name, task.name)] = base_run_dir
+
+                    # Add all trials for this agent-task pair
+                    for trial_num in range(1, self.num_trials + 1):
+                        trial_work_items.append((agent, task, trial_num, base_run_dir))
+
+            trial_progress_id = progress.add_task(
+                f"Running {len(trial_work_items)} trial(s) with max parallelism of {self.max_parallel_trials}",
+                total=len(trial_work_items),
             )
-            semaphore = asyncio.Semaphore(self.max_parallel_tasks)
+            semaphore = asyncio.Semaphore(self.max_parallel_trials)
 
-            async def run_with_semaphore(agent: AgentConfig, task: TaskConfig) -> tuple[Path, Path] | None:
+            async def run_trial_with_semaphore(
+                agent: AgentConfig, task: TaskConfig, trial_num: int, base_run_dir: Path
+            ) -> tuple[str, str, TrialResult | None]:
+                """Run a single trial with semaphore limiting."""
                 async with semaphore:
-                    return await self._run_single_task(agent, task, progress, task_progress_id)
+                    trial_result = await asyncio.to_thread(self._run_single_trial, agent, task, trial_num, base_run_dir)
+                    if progress:
+                        progress.update(
+                            trial_progress_id,
+                            advance=1,
+                            description=f"[green]✓[/green] Last completed: {agent.name} on {task.name} trial {trial_num}",
+                        )
+                    return (agent.name, task.name, trial_result)
 
-            logger.info(f"Running {len(task_coroutines)} task(s) with max parallelism of {self.max_parallel_tasks}")
-            coroutines = [run_with_semaphore(agent, task) for agent, task in task_coroutines]
+            logger.info(f"Running {len(trial_work_items)} trial(s) with max parallelism of {self.max_parallel_trials}")
+            coroutines = [
+                run_trial_with_semaphore(agent, task, trial_num, base_run_dir)
+                for agent, task, trial_num, base_run_dir in trial_work_items
+            ]
             results = await asyncio.gather(*coroutines, return_exceptions=True)
 
-            # Track task runs for report generation (filter out None and exceptions)
-            task_runs: list[tuple[Path, Path]] = []
+            # Group results by (agent_name, task_name)
+            grouped_results: dict[tuple[str, str], list[TrialResult]] = {}
             for result in results:
                 if isinstance(result, Exception):
-                    logger.error(f"Task execution failed with exception: {result}")
+                    logger.error(f"Trial execution failed with exception: {result}")
                 elif result is not None and isinstance(result, tuple):
-                    task_runs.append(result)
+                    agent_name, task_name, trial_result = result
+                    if trial_result is not None:
+                        key = (agent_name, task_name)
+                        if key not in grouped_results:
+                            grouped_results[key] = []
+                        grouped_results[key].append(trial_result)
+
+            # Aggregate results for each agent-task pair
+            task_runs: list[tuple[Path, Path]] = []
+            for (agent_name, task_name), trial_results in grouped_results.items():
+                base_run_dir = base_run_dirs.get((agent_name, task_name))
+                if base_run_dir is None:
+                    logger.error(f"Could not find base_run_dir for {agent_name} on {task_name}")
+                    continue
+
+                if trial_results:
+                    aggregated_result = self._aggregate_trial_results(trial_results, task_name, agent_name)
+
+                    # Write aggregated results to base directory
+                    aggregated_file = base_run_dir / "aggregated_results.json"
+                    aggregated_file.write_text(aggregated_result.model_dump_json(indent=2), encoding="utf-8")
+                    logger.info(
+                        f"Aggregated results for {agent_name} on {task_name}: mean={aggregated_result.mean_score:.1f}%, "
+                        f"std_dev={aggregated_result.std_dev:.1f}%, range=[{aggregated_result.min_score:.1f}%, {aggregated_result.max_score:.1f}%]"
+                    )
+
+                    # Track for report generation
+                    task_dir_path = self.tasks_dir / task_name
+                    task_runs.append((base_run_dir, task_dir_path))
+                else:
+                    logger.error(f"No trial results collected for {agent_name} on {task_name}")
 
             if generate_reports:
                 logger.info("Generating reports...")
                 report_progress_id = progress.add_task(
-                    f"Generating reports with max parallelism of {self.max_parallel_tasks}",
+                    f"Generating reports with max parallelism of {self.report_max_parallel}",
                     total=len(task_runs),
                 )
                 # Generate individual task reports for failed tasks in parallel
-                report_semaphore = asyncio.Semaphore(self.max_parallel_tasks)
+                report_semaphore = asyncio.Semaphore(self.report_max_parallel)
                 report_coroutines = [
                     self._generate_single_task_report(
                         run_dir,
@@ -742,7 +772,7 @@ class Harness:
                     for run_dir, task_dir_path in task_runs
                 ]
                 if report_coroutines:
-                    logger.info(f"Generating task failure reports with max parallelism of {self.max_parallel_tasks}")
+                    logger.info(f"Generating task failure reports with max parallelism of {self.report_max_parallel}")
                     await asyncio.gather(*report_coroutines)
 
                 # Generate consolidated summary report

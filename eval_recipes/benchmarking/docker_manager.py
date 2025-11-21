@@ -131,7 +131,7 @@ class DockerManager:
 
             # Stream logs to file and collect them
             complete_logs = ""
-            with log_file.open("w") as f:
+            with log_file.open("w", encoding="utf-8") as f:
                 for chunk in build_logs_generator:
                     if isinstance(chunk, dict) and "stream" in chunk:
                         text = chunk["stream"]
@@ -151,7 +151,7 @@ class DockerManager:
 
         except docker.errors.BuildError as e:
             # Save build logs even on failure
-            with log_file.open("w") as f:
+            with log_file.open("w", encoding="utf-8") as f:
                 for log_entry in e.build_log:
                     if isinstance(log_entry, dict):
                         if "stream" in log_entry:

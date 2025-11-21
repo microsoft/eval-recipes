@@ -3,6 +3,7 @@
 import asyncio
 import os
 from pathlib import Path
+from typing import Literal, cast
 
 import click
 from dotenv import load_dotenv
@@ -37,7 +38,7 @@ load_dotenv()
     "--agent-filter",
     "agent_filters",
     multiple=True,
-    default=(),
+    default=("name=claude_code",),
     help="Filter agents by field. Format: field=value or field=value1,value2 or field!=value (negation). "
     "Can specify multiple times (AND logic). Examples: name=claude_code or name!=old_agent",
 )
@@ -45,7 +46,7 @@ load_dotenv()
     "--task-filter",
     "task_filters",
     multiple=True,
-    default=("name=!sec_10q_extractor",),
+    default=("name=cpsc_recall_monitor,arxiv_conclusion_extraction",),
     help="Filter tasks by field. Format: field=value or field.nested=value1,value2 or field!=value (negation). "
     "Can specify multiple times (AND logic). Examples: difficulty=medium or name!=sec_10q_extractor",
 )
@@ -56,10 +57,10 @@ load_dotenv()
     help="Generate failure reports for each task, a consolidated summary report, and an HTML report",
 )
 @click.option(
-    "--max-parallel-tasks",
+    "--max-parallel-trials",
     type=int,
     default=1,
-    help="Maximum number of tasks to run in parallel",
+    help="Maximum number of trials to run in parallel",
 )
 @click.option(
     "--num-trials",
@@ -68,9 +69,16 @@ load_dotenv()
     help="Number of times to run each task",
 )
 @click.option(
-    "--enable-agent-continuation/--disable-agent-continuation",
-    default=True,
-    help="Enable or disable agent continuation checks",
+    "--continuation-provider",
+    type=click.Choice(["openai", "azure_openai", "none"], case_sensitive=False),
+    default="openai",
+    help="LLM provider for agent continuation ('none' to disable)",
+)
+@click.option(
+    "--continuation-model",
+    type=click.Choice(["gpt-5", "gpt-5.1"], case_sensitive=False),
+    default="gpt-5",
+    help="Model to use for agent continuation decisions",
 )
 @click.option(
     "--report-score-threshold",
@@ -85,9 +93,10 @@ def main(
     agent_filters: tuple[str, ...],
     task_filters: tuple[str, ...],
     generate_reports: bool,
-    max_parallel_tasks: int,
+    max_parallel_trials: int,
     num_trials: int,
-    enable_agent_continuation: bool,
+    continuation_provider: str,
+    continuation_model: str,
     report_score_threshold: float,
 ) -> None:
     """Run benchmarks for LLM agents."""
@@ -104,9 +113,10 @@ def main(
         },
         agent_filters=list(agent_filters) if agent_filters else None,
         task_filters=list(task_filters) if task_filters else None,
-        max_parallel_tasks=max_parallel_tasks,
+        max_parallel_trials=max_parallel_trials,
         num_trials=num_trials,
-        enable_agent_continuation=enable_agent_continuation,
+        continuation_provider=cast(Literal["openai", "azure_openai", "none"], continuation_provider),
+        continuation_model=cast(Literal["gpt-5", "gpt-5.1"], continuation_model),
         report_score_threshold=report_score_threshold,
     )
     asyncio.run(harness.run(generate_reports=generate_reports))
