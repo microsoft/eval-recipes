@@ -24,6 +24,9 @@ We have a few sample tasks ranging from creating CLI applications to automations
 
 Additional features include agent continuation (automatically providing follow-up prompts when needed), multi-trial evaluation for consistency measurement, and reporting with HTML dashboards.
 
+## Run Benchmarks Quickly
+
+Check [BENCHMARKING.md](./docs/BENCHMARKING.md), currently running benchmarks requires some additional setup.
 
 ## Running Benchmarks
 
@@ -70,7 +73,7 @@ uv pip install "git+https://github.com/microsoft/eval-recipes"
 ```
 
 > [!WARNING]
-> This library is very early and everything is subject to change. Consider pinning the dependency to a commit with the command like: `uv pip install "git+https://github.com/microsoft/eval-recipes@v0.0.18"`
+> This library is very early and everything is subject to change. Consider pinning the dependency to a commit with the command like: `uv pip install "git+https://github.com/microsoft/eval-recipes@v0.0.19"`
 
 
 ## High Level API
@@ -547,13 +550,23 @@ Finally, these individual reports are rolled up into a final report for each age
 ## Prerequisites
 
 - [uv](https://docs.astral.sh/uv/getting-started/installation/)
-- [Docker](https://docs.docker.com/engine/install/ubuntu/)
-  - After installing, ensure your user has docker permissions by running:
+- Install [Docker Desktop](https://docs.docker.com/desktop/) for work on systems running Windows or [Docker Engine](https://docs.docker.com/engine/install/ubuntu/) on setups like WSL 2.
+  - After installing Docker Engine on WSL 2, ensure your user has docker permissions by running:
     - `sudo usermod -aG docker $USER`
     - `newgrp docker`
-- Claude Agent SDK which requires [Claude Code](https://docs.claude.com/en/docs/claude-code/overview)
-- ANTHROPIC_API_KEY for the Claude Agent SDK.
+- The Claude Agent SDK which requires setting up [Claude Code](https://docs.claude.com/en/docs/claude-code/overview)
+- [`ANTHROPIC_API_KEY`](https://platform.claude.com/docs/en/get-started) for the Claude Agent SDK.
+- [`OPENAI_API_KEY`](hhttps://platform.openai.com/api-keys) if using agent continuation (see parameters below, or running tasks that requires it as a dependency).
 
+## Installation
+
+```bash
+# If you have make installed:
+make install
+
+# If not, you can manually setup the uv environment:
+uv lock --upgrade && uv sync --all-extras --group dev
+```
 
 ## Running Benchmarks
 
@@ -563,11 +576,11 @@ The benchmarking harness is available via the CLI script `scripts/run_benchmarks
 
 ```bash
 # Make sure your .env file is setup according to .env.sample
-# Run all agents on all tasks, by default this will use the existing data/agents/ and data/tasks/ directories
-uv run scripts/run_benchmarks.py --max-parallel-tasks 3
+uv run scripts/run_benchmarks.py --agent-filter name=claude_code --task-filter name=cpsc_recall_monitor,arxiv_conclusion_extraction,email_drafting --max-parallel-trials 6  --num-trials 2 --continuation-provider openai
 
-# You can also specify various filters
-uv run scripts/run_benchmarks.py --agent-filter name=claude_code --task-filter name=your_task_name
+# Command for a typical full benchmark run
+# sec_10q_extractor is excluded due to most all agents failing at it.
+uv run scripts/run_benchmarks.py --agent-filter name=amplifier_v1,amplifier_v2_toolkit,claude_code,gh_cli,openai_codex --task-filter name!=sec_10q_extractor --max-parallel-trials 20  --num-trials 5 --continuation-provider openai
 ```
 
 
@@ -662,7 +675,7 @@ Optional task_info fields:
 
 Optional fields:
 - `required_env_vars`: List of environment variables required for the task (e.g., API keys for evaluation)
-- `test_command`: Command to run the test script (default: `uv run --no-project /project/test.py`)
+- `test_command`: Command to run the test script
 - `timeout`: Timeout in seconds for agent execution
 
 #### `setup.dockerfile` (Optional)
@@ -711,16 +724,17 @@ Each trial is stored in a separate subdirectory (`trial_1`, `trial_2`, etc.) wit
 
 The `scripts/run_benchmarks.py` script accepts the following options:
 
-- `--agents-dir`: Path to agents directory (default: `data/agents/`)
-- `--tasks-dir`: Path to tasks directory (default: `data/tasks/`)
-- `--runs-dir`: Output directory for results (default: `.benchmark_results`)
+- `--agents-dir`: Path to agents directory
+- `--tasks-dir`: Path to tasks directory
+- `--runs-dir`: Output directory for results
 - `--agent-filter`: Filter agents by field (format: `field=value`, `field!=value`, or `field=val1,val2` for multiple)
 - `--task-filter`: Filter tasks by field (same format as agent-filter)
-- `--generate-reports`: Generate failure analysis reports (default: True)
-- `--max-parallel-tasks`: Maximum number of tasks to run in parallel (default: 22)
-- `--num-trials`: Number of trials per agent-task pair (default: 2)
-- `--enable-agent-continuation/--disable-agent-continuation`: Toggle agent continuation feature (default: enabled)
-- `--report-score-threshold`: Score threshold for generating failure reports (default: 85.0)
+- `--generate-reports`: Generate failure analysis reports
+- `--max-parallel-trials`: Maximum number of trials to run in parallel
+- `--num-trials`: Number of trials per agent-task pair
+- `--continuation-provider`: LLM provider for agent continuation - `openai`, `azure_openai`, or `none` to disable
+- `--continuation-model`: Model to use for agent continuation decisions - `gpt-5` or `gpt-5.1`
+- `--report-score-threshold`: Score threshold for generating failure reports
 
 
 ## Results
@@ -878,6 +892,7 @@ class EvaluatorProtocol(Protocol):
 import asyncio
 import os
 from pathlib import Path
+from typing import Literal, cast
 
 import click
 from dotenv import load_dotenv
@@ -912,7 +927,7 @@ load_dotenv()
     "--agent-filter",
     "agent_filters",
     multiple=True,
-    default=(),
+    default=("name=claude_code",),
     help="Filter agents by field. Format: field=value or field=value1,value2 or field!=value (negation). "
     "Can specify multiple times (AND logic). Examples: name=claude_code or name!=old_agent",
 )
@@ -920,7 +935,7 @@ load_dotenv()
     "--task-filter",
     "task_filters",
     multiple=True,
-    default=("name=!sec_10q_extractor",),
+    default=("name=cpsc_recall_monitor,arxiv_conclusion_extraction",),
     help="Filter tasks by field. Format: field=value or field.nested=value1,value2 or field!=value (negation). "
     "Can specify multiple times (AND logic). Examples: difficulty=medium or name!=sec_10q_extractor",
 )
@@ -931,10 +946,10 @@ load_dotenv()
     help="Generate failure reports for each task, a consolidated summary report, and an HTML report",
 )
 @click.option(
-    "--max-parallel-tasks",
+    "--max-parallel-trials",
     type=int,
     default=1,
-    help="Maximum number of tasks to run in parallel",
+    help="Maximum number of trials to run in parallel",
 )
 @click.option(
     "--num-trials",
@@ -943,9 +958,16 @@ load_dotenv()
     help="Number of times to run each task",
 )
 @click.option(
-    "--enable-agent-continuation/--disable-agent-continuation",
-    default=True,
-    help="Enable or disable agent continuation checks",
+    "--continuation-provider",
+    type=click.Choice(["openai", "azure_openai", "none"], case_sensitive=False),
+    default="openai",
+    help="LLM provider for agent continuation ('none' to disable)",
+)
+@click.option(
+    "--continuation-model",
+    type=click.Choice(["gpt-5", "gpt-5.1"], case_sensitive=False),
+    default="gpt-5",
+    help="Model to use for agent continuation decisions",
 )
 @click.option(
     "--report-score-threshold",
@@ -960,9 +982,10 @@ def main(
     agent_filters: tuple[str, ...],
     task_filters: tuple[str, ...],
     generate_reports: bool,
-    max_parallel_tasks: int,
+    max_parallel_trials: int,
     num_trials: int,
-    enable_agent_continuation: bool,
+    continuation_provider: str,
+    continuation_model: str,
     report_score_threshold: float,
 ) -> None:
     """Run benchmarks for LLM agents."""
@@ -979,9 +1002,10 @@ def main(
         },
         agent_filters=list(agent_filters) if agent_filters else None,
         task_filters=list(task_filters) if task_filters else None,
-        max_parallel_tasks=max_parallel_tasks,
+        max_parallel_trials=max_parallel_trials,
         num_trials=num_trials,
-        enable_agent_continuation=enable_agent_continuation,
+        continuation_provider=cast(Literal["openai", "azure_openai", "none"], continuation_provider),
+        continuation_model=cast(Literal["gpt-5", "gpt-5.1"], continuation_model),
         report_score_threshold=report_score_threshold,
     )
     asyncio.run(harness.run(generate_reports=generate_reports))
