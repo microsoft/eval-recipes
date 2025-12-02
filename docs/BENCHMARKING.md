@@ -181,7 +181,7 @@ Two slash commands are available to help create high-quality benchmark tasks:
 
 The harness supports running multiple trials of the same agent-task pair to measure consistency and reliability. Use `--num-trials N` to run each task N times.
 Results are aggregated with statistics including mean, median, standard deviation, minimum, and maximum scores.
-Each trial is stored in a separate subdirectory (`trial_1`, `trial_2`, etc.) within the results directory, and an `aggregated_results.json` file contains the statistical summary.
+Each trial is stored in a separate subdirectory (`trial_1`, `trial_2`, etc.) within the results directory.
 
 
 ## Command-Line Options
@@ -190,10 +190,9 @@ The `scripts/run_benchmarks.py` script accepts the following options:
 
 - `--agents-dir`: Path to agents directory
 - `--tasks-dir`: Path to tasks directory
-- `--runs-dir`: Output directory for results
+- `--runs-dir`: Output directory for results. If not provided, creates a new timestamped directory. If provided and exists with prior state, resumes the run.
 - `--agent-filter`: Filter agents by field (format: `field=value`, `field!=value`, or `field=val1,val2` for multiple)
 - `--task-filter`: Filter tasks by field (same format as agent-filter)
-- `--generate-reports`: Generate failure analysis reports
 - `--max-parallel-trials`: Maximum number of trials to run in parallel
 - `--num-trials`: Number of trials per agent-task pair
 - `--continuation-provider`: LLM provider for agent continuation - `openai`, `azure_openai`, or `none` to disable

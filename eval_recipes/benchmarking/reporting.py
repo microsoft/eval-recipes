@@ -1,6 +1,5 @@
 import contextlib
 import inspect
-import json
 import os
 from pathlib import Path
 import shutil
@@ -27,7 +26,7 @@ The second stage runs test.py to verify if the task was completed successfully.
 You will be provided with test.py which contains the tests that were run to generate a final score. \
 The tests can be either deterministic or semantic (in that they use a highly specialized agent to verify correctness).
 - test_output.log contains the raw output that the test runner generated. Warning, this file can be VERY long so be smart about reading it.
-- test_results.json contains higher level information about the outcome of the tests including the final score that was given.
+- trial_result.json contains the trial results including the final score that was given, along with timing information.
 test.py will often call a semantic test function, this is its signature so that you understand how it works:
 {{semantic_test_signature}}
 
@@ -38,7 +37,7 @@ IMPORTANT: The files provided can be VERY LONG. You MUST:
 4. Cross-reference with instructions.txt and test.py to understand expected behavior
 
 ANALYSIS APPROACH:
-- Start with test_results.json to identify which tests failed and get a rough understanding of why.
+- Start with trial_result.json to identify which tests failed and get a rough understanding of why.
 - Read test.py to get a high level understanding of what the goals of the tests are.
 - Then start to investigate the agent_output.log to find where the agent went wrong.
 - Compare agent's approach with instructions.txt and test.py to understand expected behavior
@@ -68,158 +67,242 @@ Make sure that your report is factual and accurate. Do not make assumptions that
 Now start by making a todo list of steps you will take to analyze the failure and make sure the last todo is to write the report to FAILURE_REPORT.md."""
 
 
-async def generate_task_report(
-    benchmark_output_dir: Path, task_directory: Path, report_score_threshold: float = 85.0
-) -> None:
+async def generate_trial_report(
+    trial_dir: Path,
+    task_directory: Path,
+    trial_score: float,
+    trial_number: int,
+    report_score_threshold: float = 85.0,
+) -> bool:
     """
-    Generate detailed failure analysis reports for a benchmark task.
-    Generates a separate report for each non-perfect trial.
+    Generate a failure report for a single trial.
 
     Args:
-        benchmark_output_dir: Path to the benchmark run directory containing logs
-        task_directory: Path to the task directory containing instructions.txt
-        report_score_threshold: Minimum score threshold to skip report generation (default: 85.0)
+        trial_dir: Path to the trial directory (e.g., runs/agent_task/trial_1/)
+        task_directory: Path to the task definition directory containing instructions.txt
+        trial_score: Score achieved by this trial
+        trial_number: Trial number
+        report_score_threshold: Skip if score >= threshold (default: 85.0)
+
+    Returns:
+        True if report was generated, False if skipped
 
     Creates:
-        FAILURE_REPORT_trial_N.md in trial_N/ subdirectories for trials scoring below threshold
+        FAILURE_REPORT_trial_N.md in the trial directory
     """
-    # Get task name from directory name
+    if trial_score >= report_score_threshold:
+        logger.info(f"Skipping report for trial {trial_number} (score {trial_score:.1f} >= {report_score_threshold})")
+        return False
+
+    if not trial_dir.exists():
+        logger.warning(f"Trial directory not found: {trial_dir}")
+        return False
+
     task_name = task_directory.name
 
-    # Read task instructions from instructions.txt in task directory
+    # Read task instructions
     instructions_file = task_directory / "instructions.txt"
     if not instructions_file.exists():
         raise FileNotFoundError(f"Instructions file not found: {instructions_file}")
     task_instructions = instructions_file.read_text(encoding="utf-8")
 
-    # Check if this is a multi-trial run by looking for aggregated_results.json
-    aggregated_results_path = benchmark_output_dir / "aggregated_results.json"
-    if not aggregated_results_path.exists():
-        logger.warning(f"No aggregated_results.json found in {benchmark_output_dir}")
-        return
-
-    # Load aggregated results to find which trials need reports
-    with aggregated_results_path.open(encoding="utf-8") as f:
-        aggregated_data = json.load(f)
-
-    trials_data = aggregated_data.get("trials", [])
-    if not trials_data:
-        logger.warning(f"No trials found in aggregated results for {benchmark_output_dir}")
-        return
+    logger.info(f"Generating failure report for trial {trial_number} (score: {trial_score:.1f})")
 
     # Get semantic_test signature dynamically using inspect
-    semantic_test_signature = inspect.getsource(semantic_test).split("\n\n")[0]  # Get function def and docstring
+    semantic_test_signature = inspect.getsource(semantic_test).split("\n\n")[0]
 
-    # Render system prompt with placeholders
+    # Render system prompt
     rendered_system_prompt = render(
         TASK_REPORT_SYSTEM_PROMPT,
         semantic_test_signature=semantic_test_signature,
     )
 
-    # Generate reports for each non-perfect trial
-    for trial_data in trials_data:
-        trial_number = trial_data.get("trial_number")
-        trial_score = trial_data.get("score", 0)
-        if trial_score >= report_score_threshold:
-            logger.info(f"Skipping report for trial {trial_number} (score >= {report_score_threshold}%)")
-            continue
+    # Create a temp dir to place files for Claude Agent SDK to work
+    temp_dir = Path(tempfile.mkdtemp(prefix=f"benchmark_report_{task_name}_trial{trial_number}_"))
 
-        trial_dir = benchmark_output_dir / f"trial_{trial_number}"
-        if not trial_dir.exists():
-            logger.warning(f"Trial directory not found: {trial_dir}")
-            continue
+    try:
+        # Collect files from trial directory
+        files_to_copy = {
+            "agent_output.log": trial_dir / "agent_output.log",
+            "test_output.log": trial_dir / "test_output.log",
+            "trial_result.json": trial_dir / "trial_result.json",
+            "test.py": trial_dir / "test.py",
+            "instructions.txt": task_directory / "instructions.txt",
+        }
 
-        logger.info(f"Generating failure report for trial {trial_number} (score: {trial_score})")
+        # Copy available files to temp directory
+        for dest_name, source_path in files_to_copy.items():
+            if source_path.exists():
+                dest_path = temp_dir / dest_name
+                shutil.copy2(source_path, dest_path)
 
-        # Create a temp dir to place files for Claude Agent SDK to work
-        temp_dir = Path(tempfile.mkdtemp(prefix=f"benchmark_report_{task_name}_trial{trial_number}_"))
-
-        try:
-            # Collect files from trial directory
-            files_to_copy = {
-                "agent_output.log": trial_dir / "agent_output.log",
-                "test_output.log": trial_dir / "test_output.log",
-                "test_results.json": trial_dir / "test_results.json",
-                "test.py": trial_dir / "test.py",
-                "instructions.txt": task_directory / "instructions.txt",
-            }
-
-            # Copy available files to temp directory
-            for dest_name, source_path in files_to_copy.items():
-                if source_path.exists():
-                    dest_path = temp_dir / dest_name
-                    shutil.copy2(source_path, dest_path)
-
-            # Create AGENTS.md with @reference to eval_recipes documentation
-            agents_md_content = """# Evaluation Recipes Documentation
+        # Create AGENTS.md with @reference to eval_recipes documentation
+        agents_md_content = """# Evaluation Recipes Documentation
 
 @eval_recipes_readme.md"""
-            agents_md_path = temp_dir / "AGENTS.md"
-            agents_md_path.write_text(agents_md_content, encoding="utf-8")
+        agents_md_path = temp_dir / "AGENTS.md"
+        agents_md_path.write_text(agents_md_content, encoding="utf-8")
 
-            # Copy LOW_LEVEL_API.md as eval_recipes_readme.md
-            low_level_api_path = Path(__file__).parents[2] / "docs" / "LOW_LEVEL_API.md"
-            if low_level_api_path.exists():
-                eval_recipes_readme_path = temp_dir / "eval_recipes_readme.md"
-                eval_recipes_readme_path.write_text(low_level_api_path.read_text(encoding="utf-8"), encoding="utf-8")
+        # Copy LOW_LEVEL_API.md as eval_recipes_readme.md
+        low_level_api_path = Path(__file__).parents[2] / "docs" / "LOW_LEVEL_API.md"
+        if low_level_api_path.exists():
+            eval_recipes_readme_path = temp_dir / "eval_recipes_readme.md"
+            eval_recipes_readme_path.write_text(low_level_api_path.read_text(encoding="utf-8"), encoding="utf-8")
 
-            # Update prompt to include trial context
-            task_report_prompt = render(
-                TASK_REPORT_USER_PROMPT,
-                task_name=f"{task_name} (Trial {trial_number})",
-                original_instructions=task_instructions,
-            )
+        # Update prompt to include trial context
+        task_report_prompt = render(
+            TASK_REPORT_USER_PROMPT,
+            task_name=f"{task_name} (Trial {trial_number})",
+            original_instructions=task_instructions,
+        )
 
-            options = ClaudeAgentOptions(
-                system_prompt=rendered_system_prompt,
-                cwd=str(temp_dir),
-                allowed_tools=["Read", "Grep", "Write"],
-                max_turns=30,
-                permission_mode="default",
-                env={"ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", "")},
-            )
-            messages = []  # store messages for debugging purposes only
-            async with ClaudeSDKClient(options=options) as client:
-                await client.query(task_report_prompt)
+        options = ClaudeAgentOptions(
+            system_prompt=rendered_system_prompt,
+            cwd=str(temp_dir),
+            allowed_tools=["Read", "Grep", "Write"],
+            max_turns=30,
+            permission_mode="default",
+            env={"ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", "")},
+        )
+        messages = []  # store messages for debugging purposes only
+        async with ClaudeSDKClient(options=options) as client:
+            await client.query(task_report_prompt)
+            async for _message in client.receive_response():
+                messages.append(_message)
+
+            # Check if the report was created at the expected path
+            report_path = temp_dir / "FAILURE_REPORT.md"
+            if not report_path.exists():
+                logger.warning(
+                    f"Report not found at expected path: {report_path}. Asking agent to verify the location..."
+                )
+                await client.query(
+                    f"The report was not found at {report_path}. "
+                    "Can you please double check if it is in the correct location and has the correct file name? "
+                    "The file should be named 'FAILURE_REPORT.md' and placed in the current working directory."
+                )
                 async for _message in client.receive_response():
                     messages.append(_message)
 
-                # Check if the report was created at the expected path
-                report_path = temp_dir / "FAILURE_REPORT.md"
-                if not report_path.exists():
-                    logger.warning(
-                        f"Report not found at expected path: {report_path}. Asking agent to verify the location..."
-                    )
-                    await client.query(
-                        f"The report was not found at {report_path}. "
-                        "Can you please double check if it is in the correct location and has the correct file name? "
-                        "The file should be named 'FAILURE_REPORT.md' and placed in the current working directory."
-                    )
-                    async for _message in client.receive_response():
-                        messages.append(_message)
-
-            # Get the report from the temp dir and move it to the trial directory
-            report_path = temp_dir / "FAILURE_REPORT.md"
-            if report_path.exists():
-                generated_content = report_path.read_text(encoding="utf-8")
-                # Prepend metadata header to each report
-                metadata_header = f"""---
+        # Get the report from the temp dir and move it to the trial directory
+        report_path = temp_dir / "FAILURE_REPORT.md"
+        if report_path.exists():
+            generated_content = report_path.read_text(encoding="utf-8")
+            # Prepend metadata header
+            metadata_header = f"""---
 **Task**: {task_name}
 **Trial**: {trial_number}
 **Score**: {trial_score:.1f}%
 ---
 
 """
-                final_content = metadata_header + generated_content
+            final_content = metadata_header + generated_content
 
-                output_path = trial_dir / f"FAILURE_REPORT_trial_{trial_number}.md"
-                output_path.write_text(final_content, encoding="utf-8")
-                logger.info(f"Failure report for trial {trial_number} saved to: {output_path}")
-        finally:
-            if temp_dir.exists():
-                # Best effort cleanup
-                with contextlib.suppress(Exception):
-                    shutil.rmtree(temp_dir)
+            output_path = trial_dir / f"FAILURE_REPORT_trial_{trial_number}.md"
+            output_path.write_text(final_content, encoding="utf-8")
+            logger.info(f"Failure report for trial {trial_number} saved to: {output_path}")
+            return True
+
+        logger.warning(f"Failed to generate report for trial {trial_number}")
+        return False
+    finally:
+        if temp_dir.exists():
+            # Best effort cleanup
+            with contextlib.suppress(Exception):
+                shutil.rmtree(temp_dir)
+
+
+async def generate_agent_consolidated_report(
+    agent_name: str,
+    runs_dir: Path,
+    task_names: list[str],
+    num_trials: int,
+) -> bool:
+    """
+    Generate a consolidated report for a single agent synthesizing all failure reports.
+
+    Args:
+        agent_name: Name of the agent
+        runs_dir: Base directory containing all run outputs
+        task_names: List of task names this agent ran
+        num_trials: Number of trials per task
+
+    Returns:
+        True if report was generated, False if no failure reports found
+    """
+    # Collect failure reports from filesystem
+    failure_reports = []
+    for task_name in task_names:
+        base_run_dir = runs_dir / f"{agent_name}_{task_name}"
+        for trial_num in range(1, num_trials + 1):
+            report_path = base_run_dir / f"trial_{trial_num}" / f"FAILURE_REPORT_trial_{trial_num}.md"
+            if report_path.exists():
+                content = report_path.read_text(encoding="utf-8")
+                report_identifier = f"{agent_name}_{task_name}_trial_{trial_num}"
+                failure_reports.append(f"## Report: {report_identifier}\n\n{content}\n\n{'=' * 80}\n")
+
+    if not failure_reports:
+        logger.info(f"No failure reports found for agent '{agent_name}' - skipping consolidated report")
+        return False
+
+    logger.info(f"Generating consolidated report for agent '{agent_name}' ({len(failure_reports)} report(s))")
+
+    temp_dir = Path(tempfile.mkdtemp(prefix=f"benchmark_consolidated_report_{agent_name}_"))
+
+    try:
+        all_reports = "\n".join(failure_reports)
+        consolidated_user_prompt = render(CONSOLIDATED_REPORT_USER_PROMPT, all_reports=all_reports)
+
+        options = ClaudeAgentOptions(
+            system_prompt=CONSOLIDATED_REPORT_SYSTEM_PROMPT,
+            cwd=str(temp_dir),
+            allowed_tools=["Write"],
+            max_turns=10,
+            permission_mode="default",
+            env={"ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", "")},
+        )
+
+        messages = []
+        async with ClaudeSDKClient(options=options) as client:
+            await client.query(consolidated_user_prompt)
+            async for msg in client.receive_response():
+                messages.append(msg)
+
+            # Check if the report was created at the expected path
+            report_path = temp_dir / "CONSOLIDATED_REPORT.md"
+            if not report_path.exists():
+                logger.warning(
+                    f"Report not found at expected path: {report_path}. Asking agent to verify the location..."
+                )
+                await client.query(
+                    f"The report was not found at {report_path}. "
+                    "Can you please double check if it is in the correct location and has the correct file name? "
+                    "The file should be named 'CONSOLIDATED_REPORT.md' and placed in the current working directory."
+                )
+                async for msg in client.receive_response():
+                    messages.append(msg)
+
+        # Get the report from the temp dir and move it to the runs dir
+        report_path = temp_dir / "CONSOLIDATED_REPORT.md"
+        if report_path.exists():
+            output_path = runs_dir / f"CONSOLIDATED_REPORT_{agent_name}.md"
+            shutil.copy2(report_path, output_path)
+            logger.info(f"Consolidated report for '{agent_name}' saved to: {output_path}")
+            return True
+
+        logger.warning(f"Failed to generate consolidated report for agent '{agent_name}'")
+        # Create a placeholder
+        output_path = runs_dir / f"CONSOLIDATED_REPORT_{agent_name}.md"
+        output_path.write_text(
+            f"# Consolidated Report for {agent_name}\n\nNo report was generated. Check the logs for details.\n",
+            encoding="utf-8",
+        )
+        return False
+    finally:
+        if temp_dir.exists():
+            # Best effort cleanup
+            with contextlib.suppress(Exception):
+                shutil.rmtree(temp_dir)
 
 
 CONSOLIDATED_REPORT_SYSTEM_PROMPT = """You are an expert at synthesizing benchmark failure analysis reports and you will be synthesizing across many such reports. \
@@ -289,163 +372,3 @@ DO NOT add:
 # Individual Task Reports
 
 {{all_reports}}"""
-
-
-def _extract_agent_name(run_dir_name: str, known_agents: list[str]) -> str:
-    """
-    Extract agent name from run directory name.
-
-    The directory format is {agent_name}_{task_name}, where both can contain underscores.
-    We match against known agent names to find the correct agent.
-
-    Args:
-        run_dir_name: Name of the run directory (e.g., "claude_code_style_blender")
-        known_agents: List of known agent names from the agents directory
-
-    Returns:
-        The extracted agent name (e.g., "claude_code")
-    """
-    # Try to match against known agents, preferring the longest match
-    # This handles cases where one agent name is a prefix of another (e.g., "gpt" vs "gpt4")
-    matching_agents = [agent for agent in known_agents if run_dir_name.startswith(agent + "_")]
-
-    if matching_agents:
-        # Return the longest matching agent name
-        return max(matching_agents, key=len)
-
-    # Fallback: use heuristic if no known agents match
-    # This handles cases where the agents directory might not be available
-    parts = run_dir_name.split("_")
-    return parts[0] if parts else run_dir_name
-
-
-def _group_reports_by_agent(benchmarks_output_dir: Path) -> dict[str, list[tuple[str, Path]]]:
-    """
-    Group failure reports by agent name.
-
-    Args:
-        benchmarks_output_dir: Directory containing benchmark run outputs
-
-    Returns:
-        Dictionary mapping agent name to list of (report_identifier, report_path) tuples
-        Report identifier format: "{agent}_{task}_trial_{N}"
-    """
-    # Try to discover known agents from the agents directory
-    # Look for agents directory relative to the repo structure
-    repo_root = Path(__file__).parents[2]
-    agents_dir = repo_root / "data" / "agents"
-    known_agents: list[str] = []
-
-    if agents_dir.exists() and agents_dir.is_dir():
-        known_agents = [d.name for d in agents_dir.iterdir() if d.is_dir()]
-        logger.info(f"Found {len(known_agents)} known agent(s): {', '.join(known_agents)}")
-
-    agent_reports: dict[str, list[tuple[str, Path]]] = {}
-    for run_dir in benchmarks_output_dir.iterdir():
-        if not run_dir.is_dir():
-            continue
-
-        agent_name = _extract_agent_name(run_dir.name, known_agents)
-        if agent_name not in agent_reports:
-            agent_reports[agent_name] = []
-
-        # Look for trial subdirectories with failure reports
-        trial_dirs = list(run_dir.glob("trial_*"))
-        if not trial_dirs:
-            logger.warning(f"No trial directories found in {run_dir.name}, skipping")
-            continue
-
-        # Collect reports from each trial
-        for trial_dir in sorted(trial_dirs):
-            for report_path in trial_dir.glob("FAILURE_REPORT_trial_*.md"):
-                report_identifier = f"{run_dir.name}_{trial_dir.name}"
-                agent_reports[agent_name].append((report_identifier, report_path))
-
-    return agent_reports
-
-
-async def generate_summary_report(benchmarks_output_dir: Path) -> None:
-    """
-    Generate consolidated reports synthesizing individual task failure reports.
-
-    This function now creates a separate consolidated report for each agent found
-    in the benchmark run directory.
-
-    Args:
-        benchmarks_output_dir: Directory containing benchmark run outputs with FAILURE_REPORT.md files
-
-    Creates:
-        CONSOLIDATED_REPORT_{agent_name}.md files for each agent in benchmarks_output_dir
-    """
-    # Group failure reports by agent
-    agent_reports = _group_reports_by_agent(benchmarks_output_dir)
-
-    if not agent_reports:
-        logger.warning("No failure reports found to consolidate")
-        return
-
-    logger.info(f"Found {len(agent_reports)} agent(s) to generate consolidated reports for")
-
-    # Generate a consolidated report for each agent
-    for agent_name, reports in agent_reports.items():
-        logger.info(f"Generating consolidated report for agent '{agent_name}' ({len(reports)} task(s))")
-
-        # Collect all failure reports for this agent
-        failure_reports = []
-        for run_dir_name, report_path in reports:
-            content = report_path.read_text(encoding="utf-8")
-            failure_reports.append(f"## Report for Task: {run_dir_name}\n\n{content}\n\n{'=' * 80}\n")
-
-        temp_dir = Path(tempfile.mkdtemp(prefix=f"benchmark_consolidated_report_{agent_name}_"))
-        report_path = temp_dir / "CONSOLIDATED_REPORT.md"
-        try:
-            all_reports = "\n".join(failure_reports)
-            consolidated_user_prompt = render(CONSOLIDATED_REPORT_USER_PROMPT, all_reports=all_reports)
-            options = ClaudeAgentOptions(
-                system_prompt=CONSOLIDATED_REPORT_SYSTEM_PROMPT,
-                cwd=str(temp_dir),
-                allowed_tools=["Write"],
-                max_turns=10,
-                permission_mode="default",
-                env={"ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", "")},
-            )
-            messages = []
-            async with ClaudeSDKClient(options=options) as client:
-                await client.query(consolidated_user_prompt)
-                async for msg in client.receive_response():
-                    messages.append(msg)
-                    continue
-
-                # Check if the report was created at the expected path
-                if not report_path.exists():
-                    logger.warning(
-                        f"Report not found at expected path: {report_path}. Asking agent to verify the location..."
-                    )
-                    await client.query(
-                        f"The report was not found at {report_path}. "
-                        "Can you please double check if it is in the correct location and has the correct file name? "
-                        "The file should be named 'CONSOLIDATED_REPORT.md' and placed in the current working directory."
-                    )
-                    async for msg in client.receive_response():
-                        messages.append(msg)
-                        continue
-
-            # Get the report from the temp dir and move it to the benchmark output dir
-            if report_path.exists():
-                output_path = benchmarks_output_dir / f"CONSOLIDATED_REPORT_{agent_name}.md"
-                shutil.copy2(report_path, output_path)
-                logger.info(f"Consolidated report for '{agent_name}' saved to: {output_path}")
-            else:
-                logger.warning(f"No consolidated report was generated for agent '{agent_name}'. Check the logs.")
-                # Create a placeholder
-                output_path = benchmarks_output_dir / f"CONSOLIDATED_REPORT_{agent_name}.md"
-                output_path.write_text(
-                    f"# Consolidated Report for {agent_name}\n\nNo report was generated. Check the logs for details.\n",
-                    encoding="utf-8",
-                )
-
-        finally:
-            if temp_dir.exists():
-                # Best effort cleanup
-                with contextlib.suppress(Exception):
-                    shutil.rmtree(temp_dir)
