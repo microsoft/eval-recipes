@@ -1,14 +1,14 @@
 # Copyright (c) Microsoft. All rights reserved
 
 import asyncio
+from datetime import UTC, datetime
 import os
 from pathlib import Path
 from typing import Literal, cast
 
 import click
 from dotenv import load_dotenv
-from rich.console import Console
-from rich.panel import Panel
+from loguru import logger
 
 from eval_recipes.benchmarking.harness import Harness
 
@@ -31,41 +31,33 @@ load_dotenv()
 @click.option(
     "--runs-dir",
     type=click.Path(file_okay=False, path_type=Path),
-    default=lambda: Path(__file__).parents[1] / ".benchmark_results",
-    help="Directory to store benchmark run results",
+    default=None,
+    help="Run directory. If not provided, creates a new timestamped dir. If provided and exists, resumes.",
 )
 @click.option(
     "--agent-filter",
     "agent_filters",
     multiple=True,
-    default=("name=claude_code",),
-    help="Filter agents by field. Format: field=value or field=value1,value2 or field!=value (negation). "
-    "Can specify multiple times (AND logic). Examples: name=claude_code or name!=old_agent",
+    default=("name=amplifier_v1,amplifier_v2_toolkit,claude_code,openai_codex,gh_cli",),
+    help="Filter agents by field. Format: field=value or field!=value. Can specify multiple times.",
 )
 @click.option(
     "--task-filter",
     "task_filters",
     multiple=True,
-    default=("name=cpsc_recall_monitor,arxiv_conclusion_extraction",),
-    help="Filter tasks by field. Format: field=value or field.nested=value1,value2 or field!=value (negation). "
-    "Can specify multiple times (AND logic). Examples: difficulty=medium or name!=sec_10q_extractor",
-)
-@click.option(
-    "--generate-reports",
-    is_flag=True,
-    default=True,
-    help="Generate failure reports for each task, a consolidated summary report, and an HTML report",
+    default=("name=name!=sec_10q_extractor",),
+    help="Filter tasks by field. Format: field=value or field!=value. Can specify multiple times.",
 )
 @click.option(
     "--max-parallel-trials",
     type=int,
-    default=1,
+    default=20,
     help="Maximum number of trials to run in parallel",
 )
 @click.option(
     "--num-trials",
     type=int,
-    default=1,
+    default=5,
     help="Number of times to run each task",
 )
 @click.option(
@@ -89,24 +81,33 @@ load_dotenv()
 def main(
     agents_dir: Path,
     tasks_dir: Path,
-    runs_dir: Path,
+    runs_dir: Path | None,
     agent_filters: tuple[str, ...],
     task_filters: tuple[str, ...],
-    generate_reports: bool,
     max_parallel_trials: int,
     num_trials: int,
     continuation_provider: str,
     continuation_model: str,
     report_score_threshold: float,
 ) -> None:
-    """Run benchmarks for LLM agents."""
+    if runs_dir is None:
+        base_dir = Path(__file__).parents[1] / ".benchmark_results"
+        timestamp = datetime.now(UTC).strftime("%Y-%m-%d_%H-%M-%S-%f")[:-3]
+        runs_dir = base_dir / timestamp
+        logger.info(f"Starting new run: {runs_dir}")
+    else:
+        if runs_dir.exists() and (runs_dir / "jobs.db").exists():
+            logger.info(f"Resuming existing run: {runs_dir}")
+        else:
+            logger.info(f"Starting new run: {runs_dir}")
+
     harness = Harness(
+        runs_dir=runs_dir,
         agents_dir=agents_dir,
         tasks_dir=tasks_dir,
-        runs_dir=runs_dir,
         environment={
-            "ANTHROPIC_API_KEY": os.environ["ANTHROPIC_API_KEY"],
-            "OPENAI_API_KEY": os.environ["OPENAI_API_KEY"],
+            "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
+            "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", ""),
             "GITHUB_TOKEN": os.environ.get("GITHUB_TOKEN", ""),
             "AZURE_OPENAI_ENDPOINT": os.environ.get("AZURE_OPENAI_ENDPOINT", ""),
             "AZURE_OPENAI_VERSION": os.environ.get("AZURE_OPENAI_VERSION", ""),
@@ -119,18 +120,7 @@ def main(
         continuation_model=cast(Literal["gpt-5", "gpt-5.1"], continuation_model),
         report_score_threshold=report_score_threshold,
     )
-    asyncio.run(harness.run(generate_reports=generate_reports))
-
-    console = Console()
-    console.print()
-    console.print(
-        Panel(
-            "Any of the files generated in the benchmarking run may contain secrets that were used during the evaluation run. "
-            "[bold red]NEVER[/bold red] commit these files to source control without first checking for exposed secrets.",
-            title="[yellow]⚠ Security Warning[/yellow]",
-            border_style="yellow",
-        )
-    )
+    asyncio.run(harness.run())
 
 
 if __name__ == "__main__":

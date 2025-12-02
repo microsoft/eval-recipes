@@ -1,1 +1,0 @@
-amplifier run --profile dev-aoai --verbose --mode single "{{task_instructions}}"

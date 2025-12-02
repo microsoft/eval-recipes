@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from html import escape
 import json
 from pathlib import Path
+import statistics
 from typing import Any
 
 import yaml
@@ -34,111 +35,120 @@ class TaskResult:
     median_agent_duration_seconds: float = 0.0
 
 
-def _load_task_results(benchmarks_output_dir: Path, tasks_directory: Path) -> list[TaskResult]:
+def _load_task_results(
+    benchmarks_output_dir: Path,
+    tasks_directory: Path,
+    agent_names: list[str],
+    task_names: list[str],
+    num_trials: int,
+) -> list[TaskResult]:
     """
     Load all task results from benchmark output directory.
 
-    Loads aggregated results across all trials.
+    Loads results from trial_result.json files and computes aggregated statistics.
 
     Args:
         benchmarks_output_dir: Directory containing benchmark run outputs
         tasks_directory: Directory containing task definitions
+        agent_names: List of agent names to load results for
+        task_names: List of task names to load results for
+        num_trials: Number of trials per agent-task pair
 
     Returns:
         List of TaskResult objects with aggregated trial statistics
     """
     results = []
 
-    # Find all task run directories (format: {agent_name}_{task_name})
-    for run_dir in benchmarks_output_dir.iterdir():
-        if not run_dir.is_dir():
-            continue
-
-        # Parse directory name to get agent and task
-        dir_name = run_dir.name
-        agent_name = None
-        task_name = None
-        task_dir_path = None
-
-        for task_dir in tasks_directory.iterdir():
-            if not task_dir.is_dir():
+    for agent_name in agent_names:
+        for task_name in task_names:
+            run_dir = benchmarks_output_dir / f"{agent_name}_{task_name}"
+            if not run_dir.exists():
                 continue
-            # Check if directory name ends with the task name
-            if dir_name.endswith(f"_{task_dir.name}"):
-                task_name = task_dir.name
-                agent_name = dir_name[: -(len(task_name) + 1)]  # Remove _{task_name}
-                task_dir_path = task_dir
-                break
 
-        if not agent_name or not task_name or not task_dir_path:
-            continue
+            task_dir_path = tasks_directory / task_name
+            if not task_dir_path.exists():
+                continue
 
-        # Load aggregated results
-        aggregated_results_path = run_dir / "aggregated_results.json"
-        if not aggregated_results_path.exists():
-            continue
+            # Load individual trial results from trial_result.json
+            trials: list[dict[str, Any]] = []
+            for trial_num in range(1, num_trials + 1):
+                trial_dir = run_dir / f"trial_{trial_num}"
+                results_file = trial_dir / "trial_result.json"
+                if results_file.exists():
+                    with results_file.open(encoding="utf-8") as f:
+                        trial_data = json.load(f)
+                    trials.append(trial_data)
 
-        with aggregated_results_path.open(encoding="utf-8") as f:
-            aggregated_data = json.load(f)
+            if not trials:
+                continue
 
-        mean_score = aggregated_data.get("mean_score", 0.0)
-        median_score = aggregated_data.get("median_score", 0.0)
-        std_dev = aggregated_data.get("std_dev", 0.0)
-        min_score = aggregated_data.get("min_score", 0.0)
-        max_score = aggregated_data.get("max_score", 0.0)
-        num_trials = aggregated_data.get("num_trials", 1)
-        num_perfect_trials = aggregated_data.get("num_perfect_trials", 0)
+            # Compute aggregated statistics
+            scores = [t["score"] for t in trials]
+            actual_num_trials = len(scores)
+            mean_score = statistics.mean(scores)
+            median_score = statistics.median(scores)
+            std_dev = statistics.stdev(scores) if actual_num_trials > 1 else 0.0
+            min_score = min(scores)
+            max_score = max(scores)
+            num_perfect_trials = sum(1 for s in scores if s == 100.0)
 
-        # Extract timing data
-        mean_agent_duration = aggregated_data.get("mean_agent_duration_seconds", 0.0)
-        median_agent_duration = aggregated_data.get("median_agent_duration_seconds", 0.0)
+            # Compute duration statistics
+            agent_durations = [t["agent_duration_seconds"] for t in trials if t.get("agent_duration_seconds")]
+            mean_agent_duration = statistics.mean(agent_durations) if agent_durations else 0.0
+            median_agent_duration = statistics.median(agent_durations) if agent_durations else 0.0
 
-        # Extract individual trial scores
-        trials = aggregated_data.get("trials", [])
-        trial_scores = [trial.get("score", 0.0) for trial in trials]
+            # Extract individual trial scores
+            trial_scores = scores
 
-        # Get metadata from first trial (they should all have same instructions)
-        metadata = trials[0].get("metadata", {}) if trials else {}
-        instructions = metadata.get("instructions", "No instructions available")
+            # Get metadata from first trial
+            metadata = trials[0].get("metadata", {}) if trials else {}
 
-        # Load task.yaml to get all task configuration
-        task_yaml_data = {}
-        task_yaml_path = task_dir_path / "task.yaml"
-        if task_yaml_path.exists():
-            with task_yaml_path.open(encoding="utf-8") as f:
-                task_yaml_data = yaml.safe_load(f) or {}
-
-        # Attach failure reports to each trial
-        for trial in trials:
-            trial_num = trial.get("trial_number")
-            trial_dir = run_dir / f"trial_{trial_num}"
-            report_path = trial_dir / f"FAILURE_REPORT_trial_{trial_num}.md"
-
-            if report_path.exists():
-                trial["failure_report"] = report_path.read_text()
-            else:
-                trial["failure_report"] = None
-
-        results.append(
-            TaskResult(
-                task_name=task_name,
-                agent_name=agent_name,
-                score=mean_score,
-                instructions=instructions,
-                metadata=metadata,
-                task_yaml_data=task_yaml_data,
-                num_trials=num_trials,
-                trial_scores=trial_scores,
-                trials=trials,
-                std_dev=std_dev,
-                min_score=min_score,
-                max_score=max_score,
-                median_score=median_score,
-                num_perfect_trials=num_perfect_trials,
-                mean_agent_duration_seconds=mean_agent_duration,
-                median_agent_duration_seconds=median_agent_duration,
+            # Load instructions from task directory
+            instructions_path = task_dir_path / "instructions.txt"
+            instructions = (
+                instructions_path.read_text(encoding="utf-8")
+                if instructions_path.exists()
+                else "No instructions available"
             )
-        )
+
+            # Load task.yaml to get all task configuration
+            task_yaml_data: dict[str, Any] = {}
+            task_yaml_path = task_dir_path / "task.yaml"
+            if task_yaml_path.exists():
+                with task_yaml_path.open(encoding="utf-8") as f:
+                    task_yaml_data = yaml.safe_load(f) or {}
+
+            # Attach failure reports to each trial
+            for trial in trials:
+                trial_num = trial.get("trial_number")
+                trial_dir = run_dir / f"trial_{trial_num}"
+                report_path = trial_dir / f"FAILURE_REPORT_trial_{trial_num}.md"
+
+                if report_path.exists():
+                    trial["failure_report"] = report_path.read_text(encoding="utf-8")
+                else:
+                    trial["failure_report"] = None
+
+            results.append(
+                TaskResult(
+                    task_name=task_name,
+                    agent_name=agent_name,
+                    score=mean_score,
+                    instructions=instructions,
+                    metadata=metadata,
+                    task_yaml_data=task_yaml_data,
+                    num_trials=actual_num_trials,
+                    trial_scores=trial_scores,
+                    trials=trials,
+                    std_dev=std_dev,
+                    min_score=min_score,
+                    max_score=max_score,
+                    median_score=median_score,
+                    num_perfect_trials=num_perfect_trials,
+                    mean_agent_duration_seconds=mean_agent_duration,
+                    median_agent_duration_seconds=median_agent_duration,
+                )
+            )
 
     return results
 
@@ -246,6 +256,7 @@ def _format_name(name: str) -> str:
         "amplifier_v2": "Amplifier Next",
         "amplifier_v2_aoai": "Amplifier Next AOAI",
         "amplifier_v2_toolkit": "Amplifier Next Toolkit",
+        "dev-local": "Amplifier Next gpt-5.1-codex-high",
     }
     if name_lower in special_names:
         return special_names[name_lower]
@@ -1824,13 +1835,23 @@ def _generate_html(results: list[TaskResult], benchmarks_output_dir: Path) -> st
     return "".join(html_parts)
 
 
-def create_html_report(benchmarks_output_dir: Path, tasks_directory: Path, output_path: Path | None = None) -> None:
+def create_html_report(
+    benchmarks_output_dir: Path,
+    tasks_directory: Path,
+    agent_names: list[str],
+    task_names: list[str],
+    num_trials: int,
+    output_path: Path | None = None,
+) -> None:
     """
     Create an HTML report for benchmark runs.
 
     Args:
         benchmarks_output_dir: Directory containing benchmark run outputs
         tasks_directory: Directory containing task definitions
+        agent_names: List of agent names to include in report
+        task_names: List of task names to include in report
+        num_trials: Number of trials per agent-task pair
         output_path: Optional path to write HTML report (default: benchmark_report.html in benchmarks_output_dir)
     """
     if not benchmarks_output_dir.exists():
@@ -1840,7 +1861,7 @@ def create_html_report(benchmarks_output_dir: Path, tasks_directory: Path, outpu
         raise FileNotFoundError(f"Tasks directory not found: {tasks_directory}")
 
     # Load results
-    results = _load_task_results(benchmarks_output_dir, tasks_directory)
+    results = _load_task_results(benchmarks_output_dir, tasks_directory, agent_names, task_names, num_trials)
 
     if not results:
         raise ValueError(f"No task results found in {benchmarks_output_dir}")

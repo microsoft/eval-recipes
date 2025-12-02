@@ -3,6 +3,7 @@ from typing import Literal
 from liquid import render
 from openai.types.shared_params.reasoning import Reasoning
 from pydantic import BaseModel, Field
+import tiktoken
 
 from eval_recipes.utils.llm import create_client
 
@@ -47,6 +48,17 @@ class ResponseToAgent(BaseModel):
     )
 
 
+def _truncate_to_token_limit(text: str, max_tokens: int = 80000) -> str:
+    """Truncate text to max_tokens, removing from the beginning to keep recent content."""
+    encoding = tiktoken.get_encoding("o200k_base")
+    tokens = encoding.encode(text)
+    if len(tokens) <= max_tokens:
+        return text
+    # Keep the last max_tokens tokens (truncate from beginning)
+    truncated_tokens = tokens[-max_tokens:]
+    return encoding.decode(truncated_tokens)
+
+
 async def interact_with_agent(
     agent_log: str,
     task_instructions: str,
@@ -63,7 +75,9 @@ async def interact_with_agent(
         model: The model to use for continuation decision
     """
 
-    user_prompt = render(INTERACTION_USER_PROMPT, task_instructions=task_instructions, agent_log=agent_log)
+    # Truncate agent_log to prevent exceeding context limits
+    truncated_log = _truncate_to_token_limit(agent_log)
+    user_prompt = render(INTERACTION_USER_PROMPT, task_instructions=task_instructions, agent_log=truncated_log)
     messages: list = [
         {"role": "system", "content": INTERACTION_SYSTEM_PROMPT},
         {"role": "user", "content": user_prompt},

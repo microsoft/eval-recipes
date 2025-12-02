@@ -1,1 +1,1 @@
-amplifier continue --profile toolkit:toolkit-dev "{{task_instructions}}"
+amplifier continue --profile toolkit:toolkit-dev --model claude-sonnet-4-5-20250929 "{{task_instructions}}"
