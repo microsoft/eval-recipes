@@ -34,6 +34,10 @@ class TrialJob(Job):
     def job_id(self) -> str:
         return f"trial:{self._agent.name}:{self._task.name}:{self._trial_num}"
 
+    @property
+    def max_retries(self) -> int:
+        return 2
+
     async def run(self, context: JobContext) -> JobResult:
         try:
             result = await run_trial(
@@ -213,7 +217,7 @@ class Harness:
         num_trials: int = 1,
         continuation_provider: Literal["openai", "azure_openai", "none"] = "none",
         continuation_model: Literal["gpt-5", "gpt-5.1"] = "gpt-5",
-        eval_recipes_version: str = "0.0.20",
+        eval_recipes_version: str = "0.0.21",
         report_score_threshold: float = 85.0,
     ) -> None:
         repo_root = Path(__file__).parents[2]

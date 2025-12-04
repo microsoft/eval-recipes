@@ -45,7 +45,7 @@ load_dotenv()
     "--task-filter",
     "task_filters",
     multiple=True,
-    default=("name=name!=sec_10q_extractor",),
+    default=("name!=sec_10q_extractor",),
     help="Filter tasks by field. Format: field=value or field!=value. Can specify multiple times.",
 )
 @click.option(
@@ -100,6 +100,11 @@ def main(
             logger.info(f"Resuming existing run: {runs_dir}")
         else:
             logger.info(f"Starting new run: {runs_dir}")
+
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    log_file = runs_dir / "benchmark_run_job.log"
+    logger.add(log_file, format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}")
+    logger.info(f"Logging to {log_file}")
 
     harness = Harness(
         runs_dir=runs_dir,
