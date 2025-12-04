@@ -1,1 +1,1 @@
-amplifier run --profile toolkit:toolkit-dev --model claude-sonnet-4-5-20250929 --verbose "{{task_instructions}}"
+amplifier run --profile toolkit:toolkit-dev --verbose "{{task_instructions}}"

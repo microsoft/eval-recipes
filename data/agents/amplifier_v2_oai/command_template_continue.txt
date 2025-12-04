@@ -1,1 +1,1 @@
-amplifier continue --profile dev-openai --verbose "{{task_instructions}}"
+amplifier continue --profile dev-openai "{{task_instructions}}"

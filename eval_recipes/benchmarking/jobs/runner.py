@@ -235,7 +235,7 @@ class JobRunner:
                         return result
                 else:
                     # SKIPPED or other status
-                    self._store.update_status(job.job_id, result.status, outputs=result.outputs)
+                    self._store.update_status(job.job_id, result.status, outputs=result.outputs, error=result.error)
                     return result
 
             except Exception as e:

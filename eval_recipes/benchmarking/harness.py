@@ -34,6 +34,10 @@ class TrialJob(Job):
     def job_id(self) -> str:
         return f"trial:{self._agent.name}:{self._task.name}:{self._trial_num}"
 
+    @property
+    def max_retries(self) -> int:
+        return 2
+
     async def run(self, context: JobContext) -> JobResult:
         try:
             result = await run_trial(
