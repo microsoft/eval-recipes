@@ -658,7 +658,8 @@ task.yaml            # Task configuration (required)
 instructions.txt     # Instructions given to the agent (required)
 test.py              # Python script to test the agent's solution (required)
 setup.dockerfile     # (Optional) Docker commands to set up the task environment
-data/                # (Optional) Directory containing test data files
+task_time_data/      # (Optional) Data files copied before agent runs
+test_time_data/      # (Optional) Data files copied before tests run
 ```
 
 ### File Descriptions
@@ -682,14 +683,22 @@ Optional fields:
 
 Contains Docker `RUN` commands to install any dependencies needed for the task or tests. This should be kept minimal, only include resources the agent would not be able to configure themselves.
 
-#### `data/` (Optional)
+#### `task_time_data/` (Optional)
 
-Optional directory containing test data files that will be copied into the container and made available to `test.py`. This is useful for:
-- Providing sample inputs for the agent to work with
+Optional directory containing data files that will be copied into the container **before the agent runs**. This is useful for:
+- Providing input files that the agent needs to work with
+- Setting up initial state that the agent's task depends on
+
+Files are copied to `/project` in the container, so they are accessible at relative paths like `./myfile.txt`.
+
+#### `test_time_data/` (Optional)
+
+Optional directory containing data files that will be copied into the container **before tests run** (after the agent finishes). This is useful for:
 - Supplying reference data for semantic tests to validate against
+- Providing expected outputs or golden files for comparison
 - Making tests more deterministic and reproducible
 
-Examples: See `data/tasks/style_blender/data/` and `data/tasks/email_drafting/data/`
+Files are copied to `/project` in the container. Examples: See `data/tasks/style_blender/test_time_data/` and `data/tasks/email_drafting/test_time_data/`
 
 #### `instructions.txt` (Required)
 Plain text instructions that will be passed to the agent. This describes what the agent should build or solve.
