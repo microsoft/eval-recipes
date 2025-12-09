@@ -217,7 +217,7 @@ class Harness:
         num_trials: int = 1,
         continuation_provider: Literal["openai", "azure_openai", "none"] = "none",
         continuation_model: Literal["gpt-5", "gpt-5.1"] = "gpt-5",
-        eval_recipes_version: str = "0.0.21",
+        eval_recipes_version: str = "0.0.22",
         report_score_threshold: float = 85.0,
     ) -> None:
         repo_root = Path(__file__).parents[2]
@@ -393,7 +393,8 @@ def _load_tasks(tasks_dir: Path, task_filters: list[str] | None) -> list[TaskCon
         instructions_file = task_dir / "instructions.txt"
         test_script = task_dir / "test.py"
         task_yaml_file = task_dir / "task.yaml"
-        data_dir = task_dir / "data"
+        task_time_data_dir = task_dir / "task_time_data"
+        test_time_data_dir = task_dir / "test_time_data"
 
         if not instructions_file.exists() or not test_script.exists() or not task_yaml_file.exists():
             continue
@@ -419,7 +420,12 @@ def _load_tasks(tasks_dir: Path, task_filters: list[str] | None) -> list[TaskCon
                 instructions=instructions_file.read_text(),
                 test_script=test_script,
                 test_command=task_yaml.get("test_command", "uv run --no-project /project/test.py"),
-                data_dir=data_dir if data_dir.exists() and data_dir.is_dir() else None,
+                task_time_data_dir=task_time_data_dir
+                if task_time_data_dir.exists() and task_time_data_dir.is_dir()
+                else None,
+                test_time_data_dir=test_time_data_dir
+                if test_time_data_dir.exists() and test_time_data_dir.is_dir()
+                else None,
                 task_info=task_info,
             )
         )

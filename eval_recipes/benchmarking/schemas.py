@@ -29,7 +29,8 @@ class TaskConfig(BaseModel):
     instructions: str  # Instructions text for the agent
     test_script: Path  # Path to test.py script
     test_command: str = "uv run --no-project /project/test.py"  # Command to run tests
-    data_dir: Path | None = None  # Optional path to data directory
+    task_time_data_dir: Path | None = None  # Optional path to task-time data directory (copied before agent runs)
+    test_time_data_dir: Path | None = None  # Optional path to test-time data directory (copied before tests run)
     timeout: int = 600  # Timeout in seconds
     task_info: TaskInfo
 
