@@ -9,7 +9,7 @@ ENV PATH="$PNPM_HOME:$PATH"
 RUN apt-get update && apt-get install -y --no-install-recommends make
 
 # Clone into a temp repo and then move Amplifier into /project
-RUN git clone https://github.com/microsoft/amplifier.git /tmp/amplifier && \
+RUN git clone -b amplifier-claude https://github.com/microsoft/amplifier.git /tmp/amplifier && \
     mv /tmp/amplifier/* /tmp/amplifier/.[!.]* /project/ 2>/dev/null || true
 
 RUN make install

@@ -22,7 +22,7 @@ class TrialConfig:
     environment: dict[str, str] = field(default_factory=dict)
     continuation_provider: Literal["openai", "azure_openai", "none"] = "none"
     continuation_model: Literal["gpt-5", "gpt-5.1"] = "gpt-5"
-    eval_recipes_version: str = "0.0.21"
+    eval_recipes_version: str = "0.0.22"
 
 
 async def run_trial(
@@ -81,6 +81,16 @@ async def run_trial(
                 docker_manager.copy_files_to_container(
                     container=docker_manager.container,
                     files=agent_data_files,
+                    dest_path="/project",
+                )
+
+        if task.task_time_data_dir and task.task_time_data_dir.exists():
+            logger.info(f"Copying task-time data directory from {task.task_time_data_dir} to container")
+            task_time_data_files = _collect_directory_files(task.task_time_data_dir)
+            if task_time_data_files:
+                docker_manager.copy_files_to_container(
+                    container=docker_manager.container,
+                    files=task_time_data_files,
                     dest_path="/project",
                 )
 
@@ -223,13 +233,13 @@ def _run_tests(
             workdir="/project",
         )
 
-        if task.data_dir and task.data_dir.exists():
-            logger.info(f"Copying data directory from {task.data_dir} to container")
-            data_files = _collect_directory_files(task.data_dir)
-            if data_files:
+        if task.test_time_data_dir and task.test_time_data_dir.exists():
+            logger.info(f"Copying test-time data directory from {task.test_time_data_dir} to container")
+            test_time_data_files = _collect_directory_files(task.test_time_data_dir)
+            if test_time_data_files:
                 docker_manager.copy_files_to_container(
                     container=container,
-                    files=data_files,
+                    files=test_time_data_files,
                     dest_path="/project",
                 )
 

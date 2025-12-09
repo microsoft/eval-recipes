@@ -2,6 +2,6 @@
 
 ENV PATH="/root/.cargo/bin:/root/.local/bin:$PATH"
 
-RUN uv tool install git+https://github.com/microsoft/amplifier@next
+RUN uv tool install git+https://github.com/microsoft/amplifier
 
 RUN amplifier --version
