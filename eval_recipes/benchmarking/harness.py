@@ -217,7 +217,7 @@ class Harness:
         num_trials: int = 1,
         continuation_provider: Literal["openai", "azure_openai", "none"] = "none",
         continuation_model: Literal["gpt-5", "gpt-5.1"] = "gpt-5",
-        eval_recipes_version: str = "0.0.23",
+        eval_recipes_version: str = "0.0.24",
         report_score_threshold: float = 85.0,
     ) -> None:
         repo_root = Path(__file__).parents[2]
