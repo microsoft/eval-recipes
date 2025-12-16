@@ -935,14 +935,14 @@ load_dotenv()
     "--agent-filter",
     "agent_filters",
     multiple=True,
-    default=("name=amplifier_foundation,claude_code,gh_cli,openai_codex",),
+    default=("name=amplifier_v1,amplifier_foundation,claude_code,gh_cli,openai_codex",),
     help="Filter agents by field. Format: field=value or field!=value. Can specify multiple times.",
 )
 @click.option(
     "--task-filter",
     "task_filters",
     multiple=True,
-    default=("name!=sec_10q_extractor_recipe,pdf-hr-q1,pdf-hr-q2,pdf-hr-q3,pdf-hr-q4,pdf-hr-q5",),
+    default=("name!=sec_10q_extractor,pdf-hr-q1,pdf-hr-q2,pdf-hr-q3,pdf-hr-q5",),
     help="Filter tasks by field. Format: field=value or field!=value. Can specify multiple times.",
 )
 @click.option(
