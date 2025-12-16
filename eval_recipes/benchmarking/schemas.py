@@ -31,7 +31,7 @@ class TaskConfig(BaseModel):
     test_command: str = "uv run --no-project /project/test.py"  # Command to run tests
     task_time_data_dir: Path | None = None  # Optional path to task-time data directory (copied before agent runs)
     test_time_data_dir: Path | None = None  # Optional path to test-time data directory (copied before tests run)
-    timeout: int = 600  # Timeout in seconds
+    timeout: int = 1800  # Timeout in seconds
     task_info: TaskInfo
 
 

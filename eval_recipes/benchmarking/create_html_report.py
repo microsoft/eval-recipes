@@ -253,10 +253,11 @@ def _format_name(name: str) -> str:
     name_lower = name.lower()
     special_names = {
         "gh_cli": "GitHub CLI",
-        "amplifier_v2": "Amplifier Next",
-        "amplifier_v2_aoai": "Amplifier Next AOAI",
-        "amplifier_v2_toolkit": "Amplifier Next Toolkit",
-        "dev-local": "Amplifier Next gpt-5.1-codex-high",
+        "amplifier_v1": "Amplifier Claude",
+        "amplifier_v2": "Amplifier",
+        "amplifier_v2_aoai": "Amplifier AOAI",
+        "amplifier_v2_toolkit": "Amplifier Toolkit",
+        "dev-local": "Amplifier gpt-5.1-codex-high",
     }
     if name_lower in special_names:
         return special_names[name_lower]

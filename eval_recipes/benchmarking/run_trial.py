@@ -22,7 +22,7 @@ class TrialConfig:
     environment: dict[str, str] = field(default_factory=dict)
     continuation_provider: Literal["openai", "azure_openai", "none"] = "none"
     continuation_model: Literal["gpt-5", "gpt-5.1"] = "gpt-5"
-    eval_recipes_version: str = "0.0.22"
+    eval_recipes_version: str = "0.0.23"
 
 
 async def run_trial(
@@ -104,7 +104,7 @@ async def run_trial(
             container=docker_manager.container,
             command=["bash", "-c", command],
             log_filename="agent_output.log",
-            timeout=1800,
+            timeout=task.timeout,
         )
         agent_duration = time.perf_counter() - agent_start_time
         logger.info(f"Trial {trial_num} command execution completed. Output saved to: {trial_dir / 'agent_output.log'}")
@@ -136,7 +136,7 @@ async def run_trial(
                             container=docker_manager.container,
                             command=["bash", "-c", continuation_command],
                             log_filename="agent_continuation.log",
-                            timeout=1800,
+                            timeout=task.timeout,
                         )
                         continuation_duration = time.perf_counter() - continuation_start
 
@@ -257,7 +257,7 @@ def _run_tests(
             container=container,
             command=test_command_parts,
             log_filename="test_output.log",
-            timeout=1800,
+            timeout=task.timeout,
             environment={
                 "EVAL_RECIPES_TEST_ID": test_id,
             },

@@ -38,14 +38,14 @@ load_dotenv()
     "--agent-filter",
     "agent_filters",
     multiple=True,
-    default=("name=amplifier_v1,amplifier_v2_toolkit,claude_code,openai_codex,gh_cli",),
+    default=("name=amplifier_foundation,claude_code,gh_cli,openai_codex",),
     help="Filter agents by field. Format: field=value or field!=value. Can specify multiple times.",
 )
 @click.option(
     "--task-filter",
     "task_filters",
     multiple=True,
-    default=("name!=sec_10q_extractor",),
+    default=("name!=sec_10q_extractor_recipe,pdf-hr-q1,pdf-hr-q2,pdf-hr-q3,pdf-hr-q4,pdf-hr-q5",),
     help="Filter tasks by field. Format: field=value or field!=value. Can specify multiple times.",
 )
 @click.option(
@@ -57,7 +57,7 @@ load_dotenv()
 @click.option(
     "--num-trials",
     type=int,
-    default=5,
+    default=3,
     help="Number of times to run each task",
 )
 @click.option(

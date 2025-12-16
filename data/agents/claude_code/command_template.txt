@@ -1,1 +1,1 @@
-IS_SANDBOX=1 claude --verbose --output-format stream-json -p "{{task_instructions}}" --disallowedTools "AskUserQuestion" --dangerously-skip-permissions
+IS_SANDBOX=1 claude --verbose --output-format stream-json -p "{{task_instructions}}" --disallowedTools "AskUserQuestion" --dangerously-skip-permissions --model opus
