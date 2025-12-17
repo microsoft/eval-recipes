@@ -22,7 +22,7 @@ class TrialConfig:
     environment: dict[str, str] = field(default_factory=dict)
     continuation_provider: Literal["openai", "azure_openai", "none"] = "none"
     continuation_model: Literal["gpt-5", "gpt-5.1"] = "gpt-5"
-    eval_recipes_version: str = "0.0.24"
+    eval_recipes_version: str = "0.0.25"
 
 
 async def run_trial(
