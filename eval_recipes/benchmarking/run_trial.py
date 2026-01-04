@@ -16,13 +16,15 @@ from eval_recipes.benchmarking.agent_interacter import interact_with_agent
 from eval_recipes.benchmarking.docker_manager import DockerManager
 from eval_recipes.benchmarking.schemas import AgentConfig, TaskConfig, TrialResult
 
+DEFAULT_EVAL_RECIPES_VERSION = "0.0.26"
+
 
 @dataclass
 class TrialConfig:
     environment: dict[str, str] = field(default_factory=dict)
     continuation_provider: Literal["openai", "azure_openai", "none"] = "none"
     continuation_model: Literal["gpt-5", "gpt-5.1"] = "gpt-5"
-    eval_recipes_version: str = "0.0.25"
+    eval_recipes_version: str = DEFAULT_EVAL_RECIPES_VERSION
 
 
 async def run_trial(
@@ -123,8 +125,10 @@ async def run_trial(
 
                 if continuation_response:
                     continuation_metadata["continuation_occurred"] = True
+                    continuation_metadata["continuation_prompt"] = continuation_response
 
-                    escaped_response = _escape_bash_string(continuation_response)
+                    # Strip leading dashes to prevent CLI option interpretation
+                    escaped_response = _escape_bash_string(continuation_response.lstrip("- "))
                     continuation_template = Template(agent.command_template_continue)
                     continuation_command = continuation_template.render(task_instructions=escaped_response)
 
@@ -143,6 +147,8 @@ async def run_trial(
                         agent_log_path = trial_dir / "agent_output.log"
                         with agent_log_path.open("a", encoding="utf-8") as f:
                             f.write("\n\n--- CONTINUATION ---\n\n")
+                            f.write(f"Continuation prompt:\n{continuation_response}\n\n")
+                            f.write("--- CONTINUATION OUTPUT ---\n\n")
                             f.write(continuation_logs)
 
                         agent_duration += continuation_duration
@@ -217,22 +223,6 @@ def _run_tests(
         test_id = str(uuid.uuid4())
         logger.info(f"Running tests (trial {trial_number}) with ID: {test_id}")
 
-        logger.info("Initializing /project as a uv project")
-        _exec_result, _init_output = docker_manager.exec_command(
-            container=container,
-            command=["uv", "init", "--no-readme", "--no-pin-python", "--name", "test_project"],
-            log_filename="uv_init_output.log",
-            workdir="/project",
-        )
-
-        git_url = f"git+https://github.com/microsoft/eval-recipes@v{eval_recipes_version}"
-        docker_manager.exec_command(
-            container=container,
-            command=["uv", "add", git_url],
-            log_filename="uv_add_eval_recipes_output.log",
-            workdir="/project",
-        )
-
         if task.test_time_data_dir and task.test_time_data_dir.exists():
             logger.info(f"Copying test-time data directory from {task.test_time_data_dir} to container")
             test_time_data_files = _collect_directory_files(task.test_time_data_dir)
@@ -249,9 +239,11 @@ def _run_tests(
         }
         docker_manager.copy_files_to_container(container=container, files=files, dest_path="/project")
 
-        # Parse test_command string into list for execution
-        test_command_parts = task.test_command.split()
-        logger.info(f"Running test: {task.test_command}")
+        # Build test command with eval-recipes as a dependency via --with
+        # This installs eval-recipes into uv's isolated cache, not into /project
+        git_url = f"git+https://github.com/microsoft/eval-recipes@v{eval_recipes_version}"
+        test_command_parts = ["uv", "run", "--with", git_url, "--no-project", "/project/test.py"]
+        logger.info(f"Running test: {' '.join(test_command_parts)}")
         test_start_time = time.perf_counter()
         _exec_result, full_output = docker_manager.exec_command(
             container=container,

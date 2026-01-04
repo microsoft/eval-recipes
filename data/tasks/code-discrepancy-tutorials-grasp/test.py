@@ -223,7 +223,7 @@ communities = leiden(G, resolution=1.5, random_seed=42)
 4. Note that `LeidenCluster` would follow sklearn patterns but graspologic uses functional APIs for partitioning"""
 
 
-STEPS_CHECK_DISCREPANCIES = """The purpose of this task is to verify whether the agent could correctly verify a set of 5 discrepancies in the documentation that were injected versus the actual implementation/behavior of the code.
+STEPS_CHECK_DISCREPANCIES = """The purpose of this task is to verify whether the agent could correctly verify a set of 4 discrepancies in the documentation that were injected versus the actual implementation/behavior of the code.
 This the report of discrepancies that were injected:
 
 # Injected Discrepancies

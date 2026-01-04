@@ -30,8 +30,7 @@ from eval_recipes.benchmarking.test_utils import (
     write_test_result,
 )
 
-STEPS = """\
-1. Find and read the file `data_analysis_answer.txt` in the project directory.
+STEPS = """1. Find and read the file `data_analysis_answer.txt` in the project directory.
 2. Compare the answer against the expected median salaries for each performance rating:
    - Rating 1: $60,000 (acceptable range: $59,400 - $60,600)
    - Rating 2: $63,550 (acceptable range: $62,915 - $64,186)
@@ -39,8 +38,7 @@ STEPS = """\
    - Rating 4: $85,600 (acceptable range: $84,744 - $86,456)
    - Rating 5: $89,250 (acceptable range: $88,358 - $90,143)
 3. For each rating, check if the value in the answer is within the acceptable range.
-4. Award 20 points for each correct rating.
-"""
+4. Award 20 points for each correct rating."""
 
 RUBRIC = {
     "rating_1_correct": "str - (20 points) Is Rating 1's median salary within tolerance?",
