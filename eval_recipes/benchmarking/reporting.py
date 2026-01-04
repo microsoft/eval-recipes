@@ -126,7 +126,7 @@ async def generate_trial_report(
             "agent_output.log": trial_dir / "agent_output.log",
             "test_output.log": trial_dir / "test_output.log",
             "trial_result.json": trial_dir / "trial_result.json",
-            "test.py": trial_dir / "test.py",
+            "test.py": task_directory / "test.py",
             "instructions.txt": task_directory / "instructions.txt",
         }
 
@@ -165,24 +165,30 @@ async def generate_trial_report(
             env={"ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", "")},
         )
         messages = []  # store messages for debugging purposes only
-        async with ClaudeSDKClient(options=options) as client:
-            await client.query(task_report_prompt)
-            async for _message in client.receive_response():
-                messages.append(_message)
-
-            # Check if the report was created at the expected path
-            report_path = temp_dir / "FAILURE_REPORT.md"
-            if not report_path.exists():
-                logger.warning(
-                    f"Report not found at expected path: {report_path}. Asking agent to verify the location..."
-                )
-                await client.query(
-                    f"The report was not found at {report_path}. "
-                    "Can you please double check if it is in the correct location and has the correct file name? "
-                    "The file should be named 'FAILURE_REPORT.md' and placed in the current working directory."
-                )
+        log_file_path = trial_dir / "trial_report_agent.log"
+        with log_file_path.open("w", encoding="utf-8") as log_file:
+            async with ClaudeSDKClient(options=options) as client:
+                await client.query(task_report_prompt)
                 async for _message in client.receive_response():
                     messages.append(_message)
+                    log_file.write(str(_message) + "\n")
+                    log_file.flush()
+
+                # Check if the report was created at the expected path
+                report_path = temp_dir / "FAILURE_REPORT.md"
+                if not report_path.exists():
+                    logger.warning(
+                        f"Report not found at expected path: {report_path}. Asking agent to verify the location..."
+                    )
+                    await client.query(
+                        f"The report was not found at {report_path}. "
+                        "Can you please double check if it is in the correct location and has the correct file name? "
+                        "The file should be named 'FAILURE_REPORT.md' and placed in the current working directory."
+                    )
+                    async for _message in client.receive_response():
+                        messages.append(_message)
+                        log_file.write(str(_message) + "\n")
+                        log_file.flush()
 
         # Get the report from the temp dir and move it to the trial directory
         report_path = temp_dir / "FAILURE_REPORT.md"
@@ -263,24 +269,30 @@ async def generate_agent_consolidated_report(
         )
 
         messages = []
-        async with ClaudeSDKClient(options=options) as client:
-            await client.query(consolidated_user_prompt)
-            async for msg in client.receive_response():
-                messages.append(msg)
-
-            # Check if the report was created at the expected path
-            report_path = temp_dir / "CONSOLIDATED_REPORT.md"
-            if not report_path.exists():
-                logger.warning(
-                    f"Report not found at expected path: {report_path}. Asking agent to verify the location..."
-                )
-                await client.query(
-                    f"The report was not found at {report_path}. "
-                    "Can you please double check if it is in the correct location and has the correct file name? "
-                    "The file should be named 'CONSOLIDATED_REPORT.md' and placed in the current working directory."
-                )
+        log_file_path = runs_dir / f"consolidated_report_agent_{agent_name}.log"
+        with log_file_path.open("w", encoding="utf-8") as log_file:
+            async with ClaudeSDKClient(options=options) as client:
+                await client.query(consolidated_user_prompt)
                 async for msg in client.receive_response():
                     messages.append(msg)
+                    log_file.write(str(msg) + "\n")
+                    log_file.flush()
+
+                # Check if the report was created at the expected path
+                report_path = temp_dir / "CONSOLIDATED_REPORT.md"
+                if not report_path.exists():
+                    logger.warning(
+                        f"Report not found at expected path: {report_path}. Asking agent to verify the location..."
+                    )
+                    await client.query(
+                        f"The report was not found at {report_path}. "
+                        "Can you please double check if it is in the correct location and has the correct file name? "
+                        "The file should be named 'CONSOLIDATED_REPORT.md' and placed in the current working directory."
+                    )
+                    async for msg in client.receive_response():
+                        messages.append(msg)
+                        log_file.write(str(msg) + "\n")
+                        log_file.flush()
 
         # Get the report from the temp dir and move it to the runs dir
         report_path = temp_dir / "CONSOLIDATED_REPORT.md"

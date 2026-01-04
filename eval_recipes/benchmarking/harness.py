@@ -11,7 +11,7 @@ from eval_recipes.benchmarking.filters import apply_filters
 from eval_recipes.benchmarking.jobs.base import Job, JobContext, JobResult, JobStatus
 from eval_recipes.benchmarking.jobs.runner import JobRunner
 from eval_recipes.benchmarking.reporting import generate_agent_consolidated_report, generate_trial_report
-from eval_recipes.benchmarking.run_trial import TrialConfig, run_trial
+from eval_recipes.benchmarking.run_trial import DEFAULT_EVAL_RECIPES_VERSION, TrialConfig, run_trial
 from eval_recipes.benchmarking.schemas import AgentConfig, TaskConfig, TaskInfo
 
 
@@ -217,7 +217,7 @@ class Harness:
         num_trials: int = 1,
         continuation_provider: Literal["openai", "azure_openai", "none"] = "none",
         continuation_model: Literal["gpt-5", "gpt-5.1"] = "gpt-5",
-        eval_recipes_version: str = "0.0.25",
+        eval_recipes_version: str = DEFAULT_EVAL_RECIPES_VERSION,
         report_score_threshold: float = 85.0,
     ) -> None:
         repo_root = Path(__file__).parents[2]
