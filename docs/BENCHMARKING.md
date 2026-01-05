@@ -232,6 +232,14 @@ A set of sample tasks can be created using this script:
 uv run scripts/third_party_benchmarks/setup_arc_agi_2.py --num-tasks 10 --seed 42 --output-dir data/tasks --clean
 ```
 
+### OpenAI FrontierScience
+
+[FrontierScience](https://huggingface.co/datasets/openai/frontierscience) is a benchmark that evaluates AI capabilities for expert-level scientific reasoning across physics, chemistry, and biology.
+
+```bash
+uv run scripts/third_party_benchmarks/setup_frontier_science.py --num-tasks 10 --seed 42 --output-dir data/tasks --clean
+```
+
 ## Notes
 
 - You may want to prune your Docker images and containers periodically to save space. Containers/images can hang around when runs are unexpectedly interrupted.

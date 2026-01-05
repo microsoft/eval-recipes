@@ -3,6 +3,7 @@ __marimo__/
 media/
 .benchmark_results/
 data/tasks/arc-agi-2-*/
+data/tasks/frontier-science-*/
 
 # Benchmarking generated reports
 benchmark_report.html
