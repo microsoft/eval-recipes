@@ -219,6 +219,19 @@ Results include detailed metrics:
   - **Consolidated reports**: Per-agent summary of all failures
   - **HTML reports**: Interactive dashboards with tabbed interface showing overview, task catalog, and per-agent detailed results
 
+## Third-Party Benchmarks
+
+Scripts for integrating third-party benchmarks are located in `scripts/third_party_benchmarks/`. These scripts download benchmark data from external sources and convert them into eval-recipes task format.
+
+### ARC-AGI-2
+
+[ARC-AGI-2](https://github.com/arcprize/ARC-AGI-2/tree/main) is a general artificial intelligence benchmark focused on abstract reasoning. Tasks involve analyzing input/output grid pairs to discover transformation patterns, then applying those patterns to new test inputs.
+A set of sample tasks can be created using this script:
+
+```bash
+uv run scripts/third_party_benchmarks/setup_arc_agi_2.py --num-tasks 10 --seed 42 --output-dir data/tasks --clean
+```
+
 ## Notes
 
 - You may want to prune your Docker images and containers periodically to save space. Containers/images can hang around when runs are unexpectedly interrupted.

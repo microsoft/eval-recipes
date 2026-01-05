@@ -2,6 +2,7 @@
 __marimo__/
 media/
 .benchmark_results/
+data/tasks/arc-agi-2-*/
 
 # Benchmarking generated reports
 benchmark_report.html
