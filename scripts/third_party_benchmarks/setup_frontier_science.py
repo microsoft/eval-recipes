@@ -48,15 +48,18 @@ from eval_recipes.benchmarking.test_utils import (
     write_test_result,
 )
 
-EXPECTED_ANSWER = """{expected_answer}"""
-
-STEPS = f"""
-1. Read the file ANSWER.txt in /project/ directory
+STEPS = """
+1. Find and read ANSWER.txt in the /project directory
+   - First check if /project/ANSWER.txt exists and read it
+   - If not found at root, search recursively under /project for any file named ANSWER.txt
+   - If no ANSWER.txt exists anywhere, score is 0
 2. Compare the agent's answer to the expected answer below
 3. Consider mathematical equivalence - different forms of the same answer should be considered correct
+  - Small numerical differences are acceptable depending on the standard practices for the domain/problem type. \
+For example, a percent difference of up to +/-0.5% might be acceptable. You should make a correct judgement based on the problem context.
 
 Expected answer:
-{{EXPECTED_ANSWER}}
+{expected_answer}
 """
 
 RUBRIC = {{
@@ -95,11 +98,13 @@ async def async_main(test_id: str, output_dir: Path, instructions_file: Path | N
     instructions = get_instructions_from_file_or_default(instructions_file=instructions_file)
     metadata["instructions"] = instructions
 
+    project_dir = Path("/project")
+
     result = await semantic_test(
         steps=STEPS,
         rubric=RUBRIC,
         context=instructions,
-        working_dir=Path("/project"),
+        working_dir=project_dir,
     )
 
     metadata["semantic_test_result"] = result.metadata
@@ -161,6 +166,15 @@ def generate_instructions(row: dict) -> str:
     """Generate instructions.txt content for a task."""
     # Unescape backslashes that come escaped from the dataset
     problem = row["problem"].replace("\\\\", "\\")
+    # Remove conflicting instruction about final answer format (uses curly quotes U+201C and U+201D)
+    problem = problem.replace(
+        "Think step by step and solve the problem below. At the end of your response, write your final "
+        "answer on a new line starting with \u201cFINAL ANSWER\u201d. It should be an answer to the question such "
+        "as providing a number, mathematical expression, formula, or entity name, without any extra "
+        "commentary or providing multiple answer attempts.",
+        "",
+    )
+    problem = problem.strip()
     return INSTRUCTIONS_TEMPLATE.format(problem=problem)
 
 

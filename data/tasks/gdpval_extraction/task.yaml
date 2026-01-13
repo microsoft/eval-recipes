@@ -1,3 +1,4 @@
+timeout: 4500
 required_env_vars:
   - OPENAI_API_KEY
 task_info:

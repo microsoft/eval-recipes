@@ -1,3 +1,4 @@
+timeout: 5400
 required_env_vars:
   - ANTHROPIC_API_KEY # This is usually required for semantic_tests in test.py
 task_info:
