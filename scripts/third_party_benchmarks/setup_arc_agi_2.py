@@ -140,6 +140,7 @@ if __name__ == "__main__":
 '''
 
 TASK_YAML_TEMPLATE = """\
+timeout: 3600
 task_info:
   difficulty: hard
   non_deterministic_evals: false

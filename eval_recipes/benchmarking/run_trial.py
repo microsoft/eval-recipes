@@ -16,7 +16,7 @@ from eval_recipes.benchmarking.agent_interacter import interact_with_agent
 from eval_recipes.benchmarking.docker_manager import DockerManager
 from eval_recipes.benchmarking.schemas import AgentConfig, TaskConfig, TrialResult
 
-DEFAULT_EVAL_RECIPES_VERSION = "0.0.26"
+DEFAULT_EVAL_RECIPES_VERSION = "0.0.27"
 
 
 @dataclass

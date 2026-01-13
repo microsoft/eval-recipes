@@ -1,3 +1,4 @@
+timeout: 4500
 required_env_vars:
   - ANTHROPIC_API_KEY
   - OPENAI_API_KEY
