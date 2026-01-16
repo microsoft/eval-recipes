@@ -290,7 +290,7 @@ class DockerManager:
             nonlocal complete_logs, stream_exception
             try:
                 with log_file.open("wb") as f:
-                    for chunk in output_stream:
+                    for chunk in output_stream:  # type: ignore[union-attr]
                         if chunk:
                             if isinstance(chunk, tuple):
                                 # demux=True returns (stdout, stderr) tuples
@@ -382,3 +382,52 @@ class DockerManager:
         if result.exit_code == 0:
             return result.output
         return None
+
+    def extract_directory_from_container(
+        self,
+        container: Container,
+        src_path: str,
+        dest_path: Path,
+        exclude_dotfiles: bool = True,
+    ) -> None:
+        """Extract a directory from container to local filesystem.
+
+        Uses container.get_archive() to get a tar stream, then extracts it
+        filtering out dotfiles/dotdirs if requested.
+
+        Args:
+            container: Container to extract from
+            src_path: Path inside container (e.g., "/project")
+            dest_path: Local destination path
+            exclude_dotfiles: If True, skip files/dirs starting with "."
+        """
+        dest_path.mkdir(parents=True, exist_ok=True)
+
+        # get_archive returns (data_generator, stat_info)
+        data_stream, _ = container.get_archive(src_path)
+
+        # Combine chunks into a single bytes object
+        tar_data = b"".join(data_stream)
+
+        # Extract from tar archive
+        with tarfile.open(fileobj=io.BytesIO(tar_data), mode="r") as tar:
+            for member in tar.getmembers():
+                # The archive includes the base directory name (e.g., "project/")
+                # We need to strip it to extract contents directly
+                parts = Path(member.name).parts
+                if len(parts) <= 1:
+                    # This is the root directory itself, skip it
+                    continue
+
+                # Get path relative to the base directory
+                relative_path = Path(*parts[1:])
+
+                # Check if any part of the path starts with "."
+                if exclude_dotfiles and any(part.startswith(".") for part in relative_path.parts):
+                    continue
+
+                # Set the name to the relative path for extraction
+                member.name = str(relative_path)
+
+                # Extract the member
+                tar.extract(member, dest_path)

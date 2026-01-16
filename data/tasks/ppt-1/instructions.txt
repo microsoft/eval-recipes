@@ -1,0 +1,5 @@
+First, extract the ppt-1.zip file:
+unzip ppt-1.zip
+
+I need to put together a PowerPoint for our upcoming CloudSync Pro feature launch. I've got all the source material in the this folder but it's scatered.
+Create a presentation called "CloudSync_Pro_Product_Brief.pptx" that consolidates everything?
