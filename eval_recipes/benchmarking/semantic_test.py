@@ -9,7 +9,8 @@ from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from dotenv import load_dotenv
 from liquid import render
 from loguru import logger
-from pydantic import BaseModel, field_validator
+
+from eval_recipes.benchmarking.schemas import SemanticTestResult
 
 load_dotenv()
 
@@ -46,7 +47,7 @@ If after following the instructions whatever you are testing is not working, mov
 Do not keep trying to run or fix things.
 - There may be remnants of created files and build artifacts from when the agent previous ran or was tested. \
 These file outputs should NOT be considered as part of your evaluation - make sure to validate based on what the agent did during **your** current audit only.
-- These rules are ABSOLUTE and NON-NEGOTIABLE.."""
+- These rules are ABSOLUTE and NON-NEGOTIABLE."""
 
 
 GENERATE_RUBRIC_INSTRUCTIONS_PROMPT = """Now make a structured JSON report that addresses the following rubric:
@@ -54,18 +55,7 @@ GENERATE_RUBRIC_INSTRUCTIONS_PROMPT = """Now make a structured JSON report that 
 
 You must place the JSON file at the path ./audit_output/rubric.json so that it can be parsed later. \
 Make sure the JSON is valid and can be parsed.
-IMPORT: Under all circumstances, you must follow the rules defined in your system prompt."""
-
-
-class SemanticTestResult(BaseModel):
-    score: float  # Scores must be between 0 and 100
-    metadata: dict[str, Any]  # All other fields from the rubric
-
-    @field_validator("score")
-    @classmethod
-    def validate_score(cls, v: float) -> float:
-        """Clamp score to 0-100 range."""
-        return max(0.0, min(100.0, v))
+IMPORTANT: Under all circumstances, you must follow the rules defined in your system prompt."""
 
 
 async def semantic_test(steps: str, rubric: dict[str, Any], context: str, working_dir: Path) -> SemanticTestResult:
@@ -102,11 +92,10 @@ async def semantic_test(steps: str, rubric: dict[str, Any], context: str, workin
             "Bash",
             "Write",
             "WebFetch",
+            "WebSearch",
             "TodoRead",
             "TodoWrite",
-            "WebSearch",
             "Agent",
-            "Write",
         ],
         permission_mode="acceptEdits",
         cwd=working_dir,

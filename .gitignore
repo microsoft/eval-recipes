@@ -2,6 +2,7 @@
 __marimo__/
 media/
 .benchmark_results/
+.comparison_results/
 data/tasks/arc-agi-2-*/
 data/tasks/frontier-science-*/
 

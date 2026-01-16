@@ -12,7 +12,7 @@ from eval_recipes.benchmarking.jobs.base import Job, JobContext, JobResult, JobS
 from eval_recipes.benchmarking.jobs.runner import JobRunner
 from eval_recipes.benchmarking.reporting import generate_agent_consolidated_report, generate_trial_report
 from eval_recipes.benchmarking.run_trial import DEFAULT_EVAL_RECIPES_VERSION, TrialConfig, run_trial
-from eval_recipes.benchmarking.schemas import AgentConfig, TaskConfig, TaskInfo
+from eval_recipes.benchmarking.schemas import AgentConfig, ScoreEvalConfig, TaskConfig, TaskInfo
 
 
 class TrialJob(Job):
@@ -415,11 +415,14 @@ def _load_tasks(tasks_dir: Path, task_filters: list[str] | None) -> list[TaskCon
         tasks.append(
             TaskConfig(
                 name=task_dir.name,
+                eval_type="score",
                 required_env_vars=task_yaml.get("required_env_vars", []),
                 task_installation=setup_file.read_text() if setup_file.exists() else "",
                 instructions=instructions_file.read_text(),
-                test_script=test_script,
-                test_command=task_yaml.get("test_command", "uv run --no-project /project/test.py"),
+                score_eval=ScoreEvalConfig(
+                    test_script=test_script,
+                    test_command=task_yaml.get("test_command", "uv run --no-project /project/test.py"),
+                ),
                 task_time_data_dir=task_time_data_dir
                 if task_time_data_dir.exists() and task_time_data_dir.is_dir()
                 else None,

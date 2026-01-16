@@ -1,0 +1,8 @@
+eval_type: comparison
+timeout: 3600
+task_info:
+  difficulty: medium
+  non_deterministic_evals: true
+  categories:
+    - ppt
+    - office
