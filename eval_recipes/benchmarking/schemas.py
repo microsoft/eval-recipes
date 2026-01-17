@@ -209,3 +209,31 @@ class FinalAggregateReport(BaseModel):
 
 
 # endregion
+
+
+# region Score Run Definition Schemas
+
+
+class ScoreTaskSpec(BaseModel):
+    """Specification for a task within a score run definition."""
+
+    task: str  # Task name (maps to task directory)
+    trials: int | None = None  # Optional trial count override
+
+
+class ScoreAgentSpec(BaseModel):
+    """Specification for an agent and its tasks in a score run definition."""
+
+    agent: str  # Agent name (maps to agent directory)
+    trials: int | None = None  # Default trial count for this agent's tasks
+    tasks: list[ScoreTaskSpec]
+
+
+class ScoreRunSpec(BaseModel):
+    """Run definition for score-based benchmarking."""
+
+    type: Literal["score"] = "score"
+    definitions: list[ScoreAgentSpec]
+
+
+# endregion

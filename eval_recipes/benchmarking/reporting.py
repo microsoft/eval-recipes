@@ -221,8 +221,7 @@ async def generate_trial_report(
 async def generate_agent_consolidated_report(
     agent_name: str,
     runs_dir: Path,
-    task_names: list[str],
-    num_trials: int,
+    task_trials: dict[str, int],
 ) -> bool:
     """
     Generate a consolidated report for a single agent synthesizing all failure reports.
@@ -230,15 +229,14 @@ async def generate_agent_consolidated_report(
     Args:
         agent_name: Name of the agent
         runs_dir: Base directory containing all run outputs
-        task_names: List of task names this agent ran
-        num_trials: Number of trials per task
+        task_trials: Maps task name to number of trials for that task
 
     Returns:
         True if report was generated, False if no failure reports found
     """
     # Collect failure reports from filesystem
     failure_reports = []
-    for task_name in task_names:
+    for task_name, num_trials in task_trials.items():
         base_run_dir = runs_dir / f"{agent_name}_{task_name}"
         for trial_num in range(1, num_trials + 1):
             report_path = base_run_dir / f"trial_{trial_num}" / f"FAILURE_REPORT_trial_{trial_num}.md"

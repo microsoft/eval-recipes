@@ -1,38 +1,69 @@
-# Eval Recipes
+<h1 align="center">
+    Eval Recipes
+</h1>
+<p align="center">
+    <p align="center">Evaluate AI agents with benchmarking harnesses and online evaluation recipes.
+    </p>
+</p>
+<p align="center">
+    <a href="https://github.com/astral-sh/uv"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json" alt="uv"></a>
+    <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+"></a>
+    <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+</p>
 
 Eval Recipes is a library dedicated to make it easier to keep up with the state-of-the-art in evaluating AI agents.
 It currently has two main components: a **benchmarking** harness for evaluating CLI agents (GitHub Copilot CLI, Claude Code, etc) on real-world tasks via containers and an **online evaluation** framework for LLM chat assistants.
-The common thread between these components is the concept of [recipes](https://sundaylettersfromsam.substack.com/p/what-is-an-ai-recipe) 
+The common thread between these components is the concept of [recipes](https://sundaylettersfromsam.substack.com/p/what-is-an-ai-recipe)
 which are a mix of code and LLM calls to achieve a desired tradeoff between flexibility and quality.
+
+
+## Installation
+
+```bash
+# Benchmarking requires certain prerequisites, see the full documentation for more details.
+# With uv (add to project dependencies, pinned to a release tag)
+uv add "eval-recipes @ git+https://github.com/microsoft/eval-recipes@v0.29"
+
+# With pip
+pip install "git+https://github.com/microsoft/eval-recipes@v0.29"
+```
+
+> [!WARNING]
+> This library is very early and everything is subject to change. Consider pinning the dependency to a commit with the command like: `uv pip install "git+https://github.com/microsoft/eval-recipes@v0.0.20"`
 
 
 # Benchmarking
 
-Eval Recipes provides a benchmarking harness for evaluating AI agents on real-world tasks in isolated Docker containers.
-We have a few sample tasks ranging from creating CLI applications to automations. Agents are automatically scored based on deterministic and semantic tests using a specialized auditing agent.
-
+Eval Recipes provides a benchmarking harness for evaluating AI agents on real-world tasks in isolated Docker containers. It supports score based, comparison based, and third party benchmarks.
+We include tasks ranging from creating CLI applications to automations. Agents are automatically scored based on deterministic and semantic tests using a specialized auditing agent.
 Additional features include agent continuation (automatically providing follow-up prompts when needed), multi-trial evaluation for consistency measurement, and reporting with HTML dashboards.
 
-## Run Benchmarks Quickly
+## Usage
 
-Check [BENCHMARKING.md](./docs/BENCHMARKING.md), currently running benchmarks requires some additional setup.
+1. Create agent definition(s). Examples are provided in [data/agents](./data/agents).
+1. Create task definition(s). Examples are provided in [data/tasks](./data/tasks).
+1. Create a run configuration. Examples are provided in [data/eval-setups](./data/eval-setups).
 
-## Running Benchmarks
+```python
+import yaml
+from eval_recipes.benchmarking.harness import Harness
+from eval_recipes.benchmarking.schemas import ScoreRunSpec
 
-```bash
-# The default agents/tasks require these environment variables. Check the agent definitions for others.
-export ANTHROPIC_API_KEY=your_anthropic_key
-export OPENAI_API_KEY=your_openai_key
+with Path("score-default.yaml").open(encoding="utf-8") as f:
+    run_definition = ScoreRunSpec(**yaml.safe_load(f))
 
-uv run scripts/run_benchmarks.py --num-trials 2
-
-# Get more info about available arguments
-uv run scripts/run_benchmarks.py --help
+harness = Harness(
+    agents_dir=Path("data/agents"),
+    tasks_dir=Path("data/tasks"),
+    run_definition=run_definition,
+)
+asyncio.run(harness.run())
 ```
 
-Results are saved to timestamped directories in `data/benchmarking/runs/` containing agent logs, test outputs, timing data, and structured results.
-Any of these files may contain secrets that were used during the evaluation run. **NEVER** commit these files to source control without first checking for secrets.
-For detailed documentation on creating custom agents and tasks, see [BENCHMARKING.md](./docs/BENCHMARKING.md).
+See [docs/BENCHMARKING.md](./docs/BENCHMARKING.md) for full details, including installation prerequisites.
+
+
+---
 
 
 # Online Evaluations
@@ -54,15 +85,6 @@ Follow the installation section below if you do not have `uv` installed or envir
 uv run marimo edit demos/1_evaluate.py
 # Select Y to run in a sandboxed venv
 ```
-
-### 3. Start using the package
-
-```bash
-uv pip install "git+https://github.com/microsoft/eval-recipes"
-```
-
-> [!WARNING]
-> This library is very early and everything is subject to change. Consider pinning the dependency to a commit with the command like: `uv pip install "git+https://github.com/microsoft/eval-recipes@v0.0.20"`
 
 
 ## High Level API

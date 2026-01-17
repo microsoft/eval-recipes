@@ -7,12 +7,11 @@ from loguru import logger
 import yaml
 
 from eval_recipes.benchmarking.create_html_report import create_html_report
-from eval_recipes.benchmarking.filters import apply_filters
 from eval_recipes.benchmarking.jobs.base import Job, JobContext, JobResult, JobStatus
 from eval_recipes.benchmarking.jobs.runner import JobRunner
 from eval_recipes.benchmarking.reporting import generate_agent_consolidated_report, generate_trial_report
 from eval_recipes.benchmarking.run_trial import DEFAULT_EVAL_RECIPES_VERSION, TrialConfig, run_trial
-from eval_recipes.benchmarking.schemas import AgentConfig, ScoreEvalConfig, TaskConfig, TaskInfo
+from eval_recipes.benchmarking.schemas import AgentConfig, ScoreEvalConfig, ScoreRunSpec, TaskConfig, TaskInfo
 
 
 class TrialJob(Job):
@@ -118,13 +117,11 @@ class ConsolidatedReportJob(Job):
     def __init__(
         self,
         agent: AgentConfig,
-        task_names: list[str],
-        num_trials: int,
+        task_trials: dict[str, int],
         runs_dir: Path,
     ):
         self._agent = agent
-        self._task_names = task_names
-        self._num_trials = num_trials
+        self._task_trials = task_trials  # Maps task_name -> num_trials
         self._runs_dir = runs_dir
 
     @property
@@ -135,8 +132,8 @@ class ConsolidatedReportJob(Job):
     def dependencies(self) -> list[str]:
         # Depend on ALL report jobs for this agent across all tasks
         deps = []
-        for task_name in self._task_names:
-            for trial_num in range(1, self._num_trials + 1):
+        for task_name, num_trials in self._task_trials.items():
+            for trial_num in range(1, num_trials + 1):
                 deps.append(f"report:{self._agent.name}:{task_name}:{trial_num}")
         return deps
 
@@ -145,8 +142,7 @@ class ConsolidatedReportJob(Job):
             report_generated = await generate_agent_consolidated_report(
                 agent_name=self._agent.name,
                 runs_dir=self._runs_dir,
-                task_names=self._task_names,
-                num_trials=self._num_trials,
+                task_trials=self._task_trials,
             )
             return JobResult(
                 status=JobStatus.COMPLETED,
@@ -164,13 +160,13 @@ class HtmlReportJob(Job):
         self,
         agent_names: list[str],
         task_names: list[str],
-        num_trials: int,
+        max_trials: int,
         runs_dir: Path,
         tasks_dir: Path,
     ):
         self._agent_names = agent_names
         self._task_names = task_names
-        self._num_trials = num_trials
+        self._max_trials = max_trials
         self._runs_dir = runs_dir
         self._tasks_dir = tasks_dir
 
@@ -190,7 +186,7 @@ class HtmlReportJob(Job):
                 tasks_directory=self._tasks_dir,
                 agent_names=self._agent_names,
                 task_names=self._task_names,
-                num_trials=self._num_trials,
+                num_trials=self._max_trials,
             )
             return JobResult(
                 status=JobStatus.COMPLETED,
@@ -202,46 +198,55 @@ class HtmlReportJob(Job):
 
 
 class Harness:
-    continuation_provider: Literal["openai", "azure_openai", "none"]
-    continuation_model: Literal["gpt-5", "gpt-5.1"]
-
     def __init__(
         self,
-        runs_dir: Path,
-        agents_dir: Path | None = None,
-        tasks_dir: Path | None = None,
+        agents_dir: Path,
+        tasks_dir: Path,
+        run_definition: ScoreRunSpec,
+        runs_dir: Path | None = None,
         environment: dict[str, str] | None = None,
-        agent_filters: list[str] | None = None,
-        task_filters: list[str] | None = None,
         max_parallel_trials: int = 5,
-        num_trials: int = 1,
         continuation_provider: Literal["openai", "azure_openai", "none"] = "none",
         continuation_model: Literal["gpt-5", "gpt-5.1"] = "gpt-5",
         eval_recipes_version: str = DEFAULT_EVAL_RECIPES_VERSION,
         report_score_threshold: float = 85.0,
     ) -> None:
-        repo_root = Path(__file__).parents[2]
-        self.agents_dir = agents_dir or repo_root / "data" / "agents"
-        self.tasks_dir = tasks_dir or repo_root / "data" / "tasks"
-        self.runs_dir = runs_dir
+        self.agents_dir = agents_dir
+        self.tasks_dir = tasks_dir
+        self.run_definition = run_definition
+        self.runs_dir = runs_dir or Path.cwd() / ".benchmark_results"
         self.runs_dir.mkdir(parents=True, exist_ok=True)
 
         self.environment = environment or {}
-        self.agent_filters = agent_filters
-        self.task_filters = task_filters
         self.max_parallel_trials = max_parallel_trials
-        self.num_trials = num_trials
-        self.continuation_provider = continuation_provider
-        self.continuation_model = continuation_model
+        self.continuation_provider: Literal["openai", "azure_openai", "none"] = continuation_provider
+        self.continuation_model: Literal["gpt-5", "gpt-5.1"] = continuation_model
         self.eval_recipes_version = eval_recipes_version
         self.report_score_threshold = report_score_threshold
 
     async def run(self) -> None:
-        agents = _load_agents(self.agents_dir, self.agent_filters)
-        tasks = _load_tasks(self.tasks_dir, self.task_filters)
+        # Load all agents and tasks
+        agents_by_name = self._load_agents_by_name()
+        tasks_by_name = self._load_tasks_by_name()
 
-        if not agents or not tasks:
-            logger.error("No agents or tasks to run. Exiting.")
+        # Resolve run definition to (agent, task, num_trials) tuples
+        agent_task_trials: list[tuple[AgentConfig, TaskConfig, int]] = []
+        for agent_spec in self.run_definition.definitions:
+            agent = agents_by_name.get(agent_spec.agent)
+            if agent is None:
+                raise ValueError(f"Agent '{agent_spec.agent}' not found in {self.agents_dir}")
+
+            for task_spec in agent_spec.tasks:
+                task = tasks_by_name.get(task_spec.task)
+                if task is None:
+                    raise ValueError(f"Task '{task_spec.task}' not found in {self.tasks_dir}")
+
+                # Determine trial count: task-level > agent-level > 1
+                num_trials = task_spec.trials or agent_spec.trials or 1
+                agent_task_trials.append((agent, task, num_trials))
+
+        if not agent_task_trials:
+            logger.error("No agent-task combinations to run. Exiting.")
             return
 
         trial_config = TrialConfig(
@@ -251,55 +256,68 @@ class Harness:
             eval_recipes_version=self.eval_recipes_version,
         )
 
+        # Build jobs from agent_task_trials
         jobs: list[Job] = []
-        for agent in agents:
-            for task in tasks:
-                base_run_dir = self.runs_dir / f"{agent.name}_{task.name}"
-                base_run_dir.mkdir(parents=True, exist_ok=True)
 
-                for trial_num in range(1, self.num_trials + 1):
-                    # Trial job
-                    jobs.append(
-                        TrialJob(
-                            agent=agent,
-                            task=task,
-                            trial_num=trial_num,
-                            base_run_dir=base_run_dir,
-                            config=trial_config,
-                        )
+        # Track task_trials per agent for consolidated reports
+        agent_task_trials_map: dict[str, dict[str, int]] = {}
+        all_task_names: set[str] = set()
+        all_agent_names: set[str] = set()
+        max_trials = 0
+
+        for agent, task, num_trials in agent_task_trials:
+            all_agent_names.add(agent.name)
+            all_task_names.add(task.name)
+            max_trials = max(max_trials, num_trials)
+
+            if agent.name not in agent_task_trials_map:
+                agent_task_trials_map[agent.name] = {}
+            agent_task_trials_map[agent.name][task.name] = num_trials
+
+            base_run_dir = self.runs_dir / f"{agent.name}_{task.name}"
+            base_run_dir.mkdir(parents=True, exist_ok=True)
+
+            for trial_num in range(1, num_trials + 1):
+                # Trial job
+                jobs.append(
+                    TrialJob(
+                        agent=agent,
+                        task=task,
+                        trial_num=trial_num,
+                        base_run_dir=base_run_dir,
+                        config=trial_config,
                     )
+                )
 
-                    # Report job (depends on trial)
-                    jobs.append(
-                        TrialReportJob(
-                            agent=agent,
-                            task=task,
-                            trial_num=trial_num,
-                            base_run_dir=base_run_dir,
-                            tasks_dir=self.tasks_dir,
-                            report_score_threshold=self.report_score_threshold,
-                        )
+                # Report job (depends on trial)
+                jobs.append(
+                    TrialReportJob(
+                        agent=agent,
+                        task=task,
+                        trial_num=trial_num,
+                        base_run_dir=base_run_dir,
+                        tasks_dir=self.tasks_dir,
+                        report_score_threshold=self.report_score_threshold,
                     )
+                )
 
-        # Create consolidated report jobs (one per agent, depends on all reports for that agent)
-        task_names = [task.name for task in tasks]
-        for agent in agents:
+        # Create consolidated report jobs (one per agent)
+        for agent_name in all_agent_names:
+            agent = agents_by_name[agent_name]
             jobs.append(
                 ConsolidatedReportJob(
                     agent=agent,
-                    task_names=task_names,
-                    num_trials=self.num_trials,
+                    task_trials=agent_task_trials_map[agent_name],
                     runs_dir=self.runs_dir,
                 )
             )
 
         # Create HTML report job (depends on all consolidated reports)
-        agent_names = [agent.name for agent in agents]
         jobs.append(
             HtmlReportJob(
-                agent_names=agent_names,
-                task_names=task_names,
-                num_trials=self.num_trials,
+                agent_names=list(all_agent_names),
+                task_names=list(all_task_names),
+                max_trials=max_trials,
                 runs_dir=self.runs_dir,
                 tasks_dir=self.tasks_dir,
             )
@@ -316,109 +334,104 @@ class Harness:
         await runner.run()
         logger.info("Job execution complete")
 
+    def _load_agents_by_name(self) -> dict[str, AgentConfig]:
+        """Load agent configurations from the agents directory."""
+        agents: dict[str, AgentConfig] = {}
+        if not self.agents_dir.exists():
+            logger.warning(f"Agents directory {self.agents_dir} does not exist.")
+            return agents
 
-def _load_agents(agents_dir: Path, agent_filters: list[str] | None) -> list[AgentConfig]:
-    """Load agent configurations from the agents directory."""
-    agents = []
-    if not agents_dir.exists():
-        logger.warning(f"Agents directory {agents_dir} does not exist.")
-        return agents
-
-    for agent_dir in agents_dir.iterdir():
-        if not agent_dir.is_dir():
-            continue
-
-        install_file = agent_dir / "install.dockerfile"
-        command_template_file = agent_dir / "command_template.txt"
-        command_template_continue_file = agent_dir / "command_template_continue.txt"
-        agent_yaml_file = agent_dir / "agent.yaml"
-        data_dir = agent_dir / "data"
-
-        if not install_file.exists() or not command_template_file.exists() or not agent_yaml_file.exists():
-            continue
-
-        with agent_yaml_file.open(encoding="utf-8") as f:
-            agent_yaml = yaml.safe_load(f) or {}
-
-        local_source_path = None
-        if "local_source_path" in agent_yaml:
-            local_source_path_str = agent_yaml["local_source_path"]
-            local_source_path = Path(local_source_path_str).resolve()
-            if not local_source_path.exists():
-                logger.warning(
-                    f"Agent '{agent_dir.name}' specifies local_source_path='{local_source_path}' "
-                    f"but path does not exist. Skipping this agent."
-                )
+        for agent_dir in self.agents_dir.iterdir():
+            if not agent_dir.is_dir():
                 continue
-            if not local_source_path.is_dir():
-                logger.warning(
-                    f"Agent '{agent_dir.name}' specifies local_source_path='{local_source_path}' "
-                    f"but path is not a directory. Skipping this agent."
-                )
-                continue
-            logger.info(f"Agent '{agent_dir.name}' will use local source from: {local_source_path}")
 
-        agents.append(
-            AgentConfig(
+            install_file = agent_dir / "install.dockerfile"
+            command_template_file = agent_dir / "command_template.txt"
+            command_template_continue_file = agent_dir / "command_template_continue.txt"
+            agent_yaml_file = agent_dir / "agent.yaml"
+            data_dir = agent_dir / "data"
+
+            if not install_file.exists() or not command_template_file.exists() or not agent_yaml_file.exists():
+                continue
+
+            with agent_yaml_file.open(encoding="utf-8") as f:
+                agent_yaml = yaml.safe_load(f) or {}
+
+            local_source_path = None
+            if "local_source_path" in agent_yaml:
+                local_source_path_str = agent_yaml["local_source_path"]
+                local_source_path = Path(local_source_path_str).resolve()
+                if not local_source_path.exists():
+                    logger.warning(
+                        f"Agent '{agent_dir.name}' specifies local_source_path='{local_source_path}' "
+                        f"but path does not exist. Skipping this agent."
+                    )
+                    continue
+                if not local_source_path.is_dir():
+                    logger.warning(
+                        f"Agent '{agent_dir.name}' specifies local_source_path='{local_source_path}' "
+                        f"but path is not a directory. Skipping this agent."
+                    )
+                    continue
+                logger.info(f"Agent '{agent_dir.name}' will use local source from: {local_source_path}")
+
+            agents[agent_dir.name] = AgentConfig(
                 name=agent_dir.name,
                 required_env_vars=agent_yaml.get("required_env_vars", []),
-                agent_installation=install_file.read_text(),
-                command_template=command_template_file.read_text(),
+                agent_installation=install_file.read_text(encoding="utf-8"),
+                command_template=command_template_file.read_text(encoding="utf-8"),
                 command_template_continue=(
-                    command_template_continue_file.read_text() if command_template_continue_file.exists() else None
+                    command_template_continue_file.read_text(encoding="utf-8")
+                    if command_template_continue_file.exists()
+                    else None
                 ),
                 data_dir=data_dir if data_dir.exists() and data_dir.is_dir() else None,
                 local_source_path=local_source_path,
             )
-        )
 
-    if agent_filters:
-        agents = apply_filters(agents, agent_filters)
-    logger.info(f"Loaded {len(agents)} agent(s)")
-    return agents
+        logger.info(f"Loaded {len(agents)} agent(s)")
+        return agents
 
+    def _load_tasks_by_name(self) -> dict[str, TaskConfig]:
+        """Load task configurations from the tasks directory."""
+        tasks: dict[str, TaskConfig] = {}
+        if not self.tasks_dir.exists():
+            logger.warning(f"Tasks directory {self.tasks_dir} does not exist.")
+            return tasks
 
-def _load_tasks(tasks_dir: Path, task_filters: list[str] | None) -> list[TaskConfig]:
-    """Load task configurations from the tasks directory."""
-    tasks = []
-    if not tasks_dir.exists():
-        logger.warning(f"Tasks directory {tasks_dir} does not exist.")
-        return tasks
+        for task_dir in self.tasks_dir.iterdir():
+            if not task_dir.is_dir():
+                continue
 
-    for task_dir in tasks_dir.iterdir():
-        if not task_dir.is_dir():
-            continue
+            setup_file = task_dir / "setup.dockerfile"
+            instructions_file = task_dir / "instructions.txt"
+            test_script = task_dir / "test.py"
+            task_yaml_file = task_dir / "task.yaml"
+            task_time_data_dir = task_dir / "task_time_data"
+            test_time_data_dir = task_dir / "test_time_data"
 
-        setup_file = task_dir / "setup.dockerfile"
-        instructions_file = task_dir / "instructions.txt"
-        test_script = task_dir / "test.py"
-        task_yaml_file = task_dir / "task.yaml"
-        task_time_data_dir = task_dir / "task_time_data"
-        test_time_data_dir = task_dir / "test_time_data"
+            if not instructions_file.exists() or not test_script.exists() or not task_yaml_file.exists():
+                continue
 
-        if not instructions_file.exists() or not test_script.exists() or not task_yaml_file.exists():
-            continue
+            with task_yaml_file.open(encoding="utf-8") as f:
+                task_yaml = yaml.safe_load(f) or {}
 
-        with task_yaml_file.open(encoding="utf-8") as f:
-            task_yaml = yaml.safe_load(f) or {}
+            task_info_data = task_yaml.get("task_info")
+            if not task_info_data:
+                logger.warning(f"Skipping task '{task_dir.name}', missing required 'task_info' field in task.yaml")
+                continue
 
-        task_info_data = task_yaml.get("task_info")
-        if not task_info_data:
-            logger.warning(f"Skipping task '{task_dir.name}', missing required 'task_info' field in task.yaml")
-            continue
+            task_info = TaskInfo(
+                difficulty=task_info_data["difficulty"],
+                non_deterministic_evals=task_info_data.get("non_deterministic_evals", False),
+            )
 
-        task_info = TaskInfo(
-            difficulty=task_info_data["difficulty"],
-            non_deterministic_evals=task_info_data["non_deterministic_evals"],
-        )
-
-        tasks.append(
-            TaskConfig(
+            tasks[task_dir.name] = TaskConfig(
                 name=task_dir.name,
                 eval_type="score",
                 required_env_vars=task_yaml.get("required_env_vars", []),
-                task_installation=setup_file.read_text() if setup_file.exists() else "",
-                instructions=instructions_file.read_text(),
+                task_installation=setup_file.read_text(encoding="utf-8") if setup_file.exists() else "",
+                instructions=instructions_file.read_text(encoding="utf-8"),
                 score_eval=ScoreEvalConfig(
                     test_script=test_script,
                     test_command=task_yaml.get("test_command", "uv run --no-project /project/test.py"),
@@ -432,9 +445,6 @@ def _load_tasks(tasks_dir: Path, task_filters: list[str] | None) -> list[TaskCon
                 timeout=task_yaml.get("timeout", 1800),
                 task_info=task_info,
             )
-        )
 
-    if task_filters:
-        tasks = apply_filters(tasks, task_filters)
-    logger.info(f"Loaded {len(tasks)} task(s)")
-    return tasks
+        logger.info(f"Loaded {len(tasks)} task(s)")
+        return tasks
