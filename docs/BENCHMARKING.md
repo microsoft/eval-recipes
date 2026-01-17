@@ -1,279 +1,417 @@
 # Benchmarking
 
-This module provides a benchmarking harness for evaluating AI agents on real-world tasks within isolated Docker containers.
+This module provides a benchmarking harness for evaluating AI agents within isolated Docker containers.
 
-The goal of the module is to produce a final report that details how well each agent performed on a variety of custom tasks.
 
-We support two evaluation modes:
-- **Score-based**: Each agent's output is scored by a `test.py` script (0-100)
-- **Comparison-based**: An LLM compares outputs from multiple agents and ranks them
+## Installation
 
-The core of the module uses agent definitions (defaults in `data/agents/`) and task definitions (defaults in `data/tasks/`) to run agents on tasks in isolated Docker containers.
+```bash
+# Install prerequisites below first.
+# With uv (add to project dependencies, pinned to a release tag)
+uv add "eval-recipes @ git+https://github.com/microsoft/eval-recipes@v0.29"
+
+# With pip
+pip install "git+https://github.com/microsoft/eval-recipes@v0.29"
+```
 
 
 ## Prerequisites
 
 - [uv](https://docs.astral.sh/uv/getting-started/installation/)
-- Install [Docker Desktop](https://docs.docker.com/desktop/) for work on systems running Windows or [Docker Engine](https://docs.docker.com/engine/install/ubuntu/) on setups like WSL 2.
+- Install [Docker Desktop](https://docs.docker.com/desktop/) for work on systems running Windows* or [Docker Engine](https://docs.docker.com/engine/install/ubuntu/) on setups like WSL 2.
   - After installing Docker Engine on WSL 2, ensure your user has docker permissions by running:
     - `sudo usermod -aG docker $USER`
     - `newgrp docker`
 - The Claude Agent SDK which requires setting up [Claude Code](https://docs.claude.com/en/docs/claude-code/overview)
 - [`ANTHROPIC_API_KEY`](https://platform.claude.com/docs/en/get-started) for the Claude Agent SDK.
-- [`OPENAI_API_KEY`](hhttps://platform.openai.com/api-keys) if using agent continuation (see parameters below, or running tasks that requires it as a dependency).
+- [`OPENAI_API_KEY`](https://platform.openai.com/api-keys) if using agent continuation (see parameters below, or running tasks that requires it as a dependency).
 
-## Installation
+* All features may not currently work on Windows due to Claude Agent SDK limitations.
 
-```bash
-# If you have make installed:
-make install
 
-# If not, you can manually setup the uv environment:
-uv lock --upgrade && uv sync --all-extras --group dev
+## Usage
+
+1. Create agent definition(s). Examples are provided in [data/agents](../data/agents) and described further [below](#agent-definitions).
+1. Create task definition(s). Examples are provided in [data/tasks](../data/tasks) and described further [below](#task-definitions).
+1. Create a run configuration. Examples are provided in [data/eval-setups](../data/eval-setups) and described further [below](#run-configurations).
+
+```python
+import yaml
+from eval_recipes.benchmarking.harness import Harness
+from eval_recipes.benchmarking.schemas import ScoreRunSpec
+
+with Path("score-default.yaml").open(encoding="utf-8") as f:
+    run_definition = ScoreRunSpec(**yaml.safe_load(f))
+
+harness = Harness(
+    agents_dir=Path("data/agents"),
+    tasks_dir=Path("data/tasks"),
+    run_definition=run_definition,
+)
+asyncio.run(harness.run())
 ```
 
-## Running Benchmarks
+Comparison based evaluations currently are separate from score based evaluations.
 
-The benchmarking harness is available via the CLI script `scripts/run_benchmarks.py`.
+```python
+import yaml
+from eval_recipes.benchmarking.harness_comparison import ComparisonHarness
+from eval_recipes.benchmarking.schemas import ComparisonTaskSpec
 
-### Basic Usage
+with Path("comparison-default.yaml").open(encoding="utf-8") as f:
+    data = yaml.safe_load(f)
+    specs = [ComparisonTaskSpec(task_name=c["task"], agent_names=c["agents"]) for c in data["comparisons"]]
 
-```bash
-# Make sure your .env file is setup according to .env.sample
-uv run scripts/run_benchmarks.py --agent-filter name=claude_code --task-filter name=cpsc_recall_monitor,arxiv_conclusion_extraction,email_drafting --max-parallel-trials 6  --num-trials 2 --continuation-provider openai
+harness = ComparisonHarness(
+    agents_dir=Path("data/agents"),
+    tasks_dir=Path("data/tasks"),
+)
 
-# Command for a typical full benchmark run
-# sec_10q_extractor is excluded due to most all agents failing at it.
-uv run scripts/run_benchmarks.py --agent-filter name=amplifier_v1,amplifier_v2_toolkit,claude_code,gh_cli,openai_codex --task-filter name!=sec_10q_extractor --max-parallel-trials 20  --num-trials 5 --continuation-provider openai
+asyncio.run(harness.run(specs))
 ```
 
 
-## Running Comparison Benchmarks
+## Agent Definitions
 
-Comparison benchmarks evaluate agents by having an LLM compare their outputs and rank them, rather than scoring each output independently.
+Each agent is a subdirectory containing the files needed to install and run the agent:
 
-### Config File Format
+```
+agent_id/                         # Agent directory
+  agent.yaml                      # Agent configuration
+  install.dockerfile              # Docker commands to install the agent
+  command_template.txt            # Liquid template for the command to start a task with the agent
+  command_template_continue.txt   # (Optional) Template for agent continuation when follow-up is needed. This command must continue from the previous session/conversation.
+  data/                           # (Optional) Agent-specific data files used during installation or runtime
+```
 
-Comparison benchmarks use a YAML config file that specifies which agents to compare on each task. Can you can specify any combination of tasks and agents.
+### `agent.yaml`
+
+Configuration file for the agent. All fields are optional.
+
+```yaml
+# Environment variables passed into the container.
+# Sourced from the harness `environment` parameter.
+required_env_vars:
+  - ANTHROPIC_API_KEY
+  - OPENAI_API_KEY
+
+# Absolute path to local source code for development.
+local_source_path: /path/to/source
+```
+
+### `install.dockerfile`
+
+Docker commands to install the agent. These are injected into the [base image](../eval_recipes/benchmarking/base.dockerfile).
+
+```dockerfile
+# Example: Install GitHub Copilot CLI
+RUN npm install -g @github/copilot
+RUN copilot --version
+```
+
+### `command_template.txt`
+
+[Python Liquid](https://github.com/jg-rp/liquid) template for the command to run the agent. The `{{task_instructions}}` variable contains the task instructions from `instructions.txt`.
+
+```
+copilot -p "{{task_instructions}}" --allow-all-tools
+```
+
+### `command_template_continue.txt`
+
+Optional. Liquid template for continuing an agent session when follow-up is needed. The `{{task_instructions}}` variable contains the continuation prompt. This command must resume the previous conversation.
+
+```
+copilot -p "{{task_instructions}}" --continue --allow-all-tools
+```
+
+### `data/`
+
+Optional. Directory containing agent-specific data files. Contents are copied to `/project` in the container before the agent runs.
+
+### Defining Local Agents
+
+For development and testing, you can create agent variants that use local source code instead of remote repositories. 
+
+1. Add `agent.yaml` with `local_source_path` pointing to your local source:
+   ```yaml
+   local_source_path: /absolute/path/to/your/agent/source
+   ```
+1. Create `install.dockerfile` that installs from `/tmp/agent_source/` (where source is automatically copied)
+1. By default it ignores files in `.gitignore` if present (otherwise excludes `.git`, `.venv`, `__pycache__`, etc.)
+
+
+## Task Definitions
+
+Each task is a subdirectory containing the files needed to define the task and test the agent's solution.
+
+```
+task_id/
+  task.yaml            # Task configuration (required)
+  instructions.txt     # Instructions given to the agent (required)
+  test.py              # Python script to test the agent's solution (required for score-based tasks)
+  setup.dockerfile     # (Optional) Docker commands to set up the task environment
+  task_time_data/      # (Optional) Data files copied before agent runs
+  test_time_data/      # (Optional) Data files copied before tests run
+```
+
+### `task.yaml`
+
+Configuration file for the task.
+
+```yaml
+# Required
+task_info:
+  difficulty: medium                                   # "easy", "medium", or "hard"
+  non_deterministic_evals: true                        # Whether evals use LLMs or not (default: false)
+  categories:                                          # Optional category tags
+    - cli_tool
+    - writing
+
+# Optional
+timeout: 5400                                          # Timeout in seconds (default: 1800)
+required_env_vars:                                     # Environment variables needed by the task
+  - ANTHROPIC_API_KEY
+test_command: uv run --no-project /project/test.py     # Command to run tests (default shown)
+
+# For comparison-based tasks
+eval_type: comparison                                  # "score", "comparison", or "both" (default: "score")
+comparison_eval:
+  guidelines: |                                        # Evaluation guidelines for the comparison judge
+    Focus on clarity and completeness of the response.
+```
+
+### `instructions.txt`
+
+The task prompt given to the agent. This is passed to the agent via the `{{task_instructions}}` template variable in `command_template.txt`.
+
+### `test.py`
+
+Python script that evaluates the agent's work. The script runs inside the container after the agent completes. 
+Uses `semantic_test()` for LLM-based evaluation (eval-recipes is by default available when the script runs) or direct file checks for deterministic tests.
+
+The script must output a JSON to following path `{output_dir}/.eval_recipes_test_results_{test_id}.json` and the following format:
+
+```json
+{"score": 85.0, "metadata": {"field": "value"}}
+```
+
+The `write_test_result()` utility handles writing this file in the correct format. 
+See the following complete example:
+
+```python
+import asyncio
+import sys
+from pathlib import Path
+
+import click
+from eval_recipes.benchmarking.semantic_test import semantic_test
+from eval_recipes.benchmarking.test_utils import (
+    get_instructions_from_file_or_default,
+    get_test_id_from_env_or_default,
+    write_test_result,
+)
+
+STEPS = """1. Explore the /project directory to understand what the agent created
+2. Verify the required files exist
+3. Check that the implementation meets the requirements"""
+
+RUBRIC = {
+    "files_exist": "bool - Do all required files exist?",
+    "implementation_correct": "str - Assessment of the implementation",
+    "score": "float - Overall score from 0-100",
+}
+
+@click.command()
+@click.option("--test-id", default=lambda: get_test_id_from_env_or_default("dev"))
+@click.option("--output-dir", type=click.Path(path_type=Path), default=lambda: Path(__file__).parents[0])
+@click.option("--instructions-file", type=click.Path(path_type=Path), default=None)
+def main(test_id: str, output_dir: Path, instructions_file: Path | None) -> int:
+    return asyncio.run(run_test(test_id, output_dir, instructions_file))
+
+async def run_test(test_id: str, output_dir: Path, instructions_file: Path | None) -> int:
+    instructions = get_instructions_from_file_or_default(instructions_file)
+
+    result = await semantic_test(
+        steps=STEPS,
+        rubric=RUBRIC,
+        context=instructions,
+        working_dir=Path("/project"),
+    )
+
+    write_test_result(output_dir, test_id, result.score, result.metadata)
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
+### `setup.dockerfile`
+
+Optional. Docker commands to set up task-specific dependencies. Injected into the [base image](../eval_recipes/benchmarking/base.dockerfile) after the agent installation.
+
+```dockerfile
+# Example: Install Ollama for embedding tasks
+RUN curl -fsSL https://ollama.com/install.sh | sh
+RUN nohup ollama serve > /dev/null 2>&1 & sleep 5 && ollama pull embeddinggemma:300m-qat-q8_0
+```
+
+### `task_time_data/`
+
+Optional. Directory containing files the agent needs to complete the task (e.g., PDFs, source code archives). Contents are copied to `/project` before the agent runs.
+
+### `test_time_data/`
+
+Optional. Directory containing files needed only for testing (e.g., expected outputs, test inputs). Contents are copied to `/project` before tests run, but after the agent completes.
+
+
+## Run Configurations
+
+YAML files that define which agents to run on which tasks. Agent and task names must match directory names in `agents_dir` and `tasks_dir` passed to the harness.
+
+### Score-Based Configuration
+
+```yaml
+type: score
+definitions:
+  - agent: claude_code
+    trials: 3                        # Default trials for this agent's tasks
+    tasks:
+      - task: email_drafting
+      - task: arxiv_paper_summarizer
+        trials: 5                    # Override trials for this specific task
+  - agent: gh_cli
+    trials: 3
+    tasks:
+      - task: email_drafting
+```
+
+### Comparison-Based Configuration
+
+Each comparison can include any number of agents (minimum 2). The harness runs each agent on the task and uses an agent judge to rank their outputs.
 
 ```yaml
 comparisons:
-  - task: task_name
+  - task: ppt-1
     agents:
-      - agent_1
-      - agent_2
-  - task: another_task
+      - claude_code
+      - gh_cli
+      - openai_codex
+  - task: ppt-2
     agents:
-      - agent_1
-      - agent_2
-      - agent_3
+      - claude_code
+      - gh_cli
 ```
 
-### Basic Usage
 
-```bash
-# Run with default config (data/eval-setups/comparison-all.yaml)
-uv run scripts/run_comparison_benchmarks.py
+## Harnesses
 
-# Run with custom config
-uv run scripts/run_comparison_benchmarks.py --config path/to/config.yaml --comparison-runs 5
+Harnesses orchestrate the benchmark run: they build Docker images for each agent-task combination, run agents in isolated containers, execute test scripts to evaluate results, and generate HTML reports with scores and analysis.
+
+### Score Harness
+
+[Source](../eval_recipes/benchmarking/harness.py)
+
+```python
+from eval_recipes.benchmarking.harness import Harness
+
+harness = Harness(
+    agents_dir=Path,                  # Directory containing agent definitions
+    tasks_dir=Path,                   # Directory containing task definitions
+    run_definition=ScoreRunSpec,      # Parsed run configuration
+    runs_dir=Path | None,             # Output directory (default: .benchmark_results)
+    environment=dict | None,          # Environment variables for containers
+    max_parallel_trials=5,            # Maximum concurrent trials
+    continuation_provider="none",     # "openai", "azure_openai", or "none"
+    continuation_model="gpt-5",       # Model for continuation prompts
+    eval_recipes_version="...",       # Version of eval-recipes in containers
+    report_score_threshold=85.0,      # Generate failure reports below this score
+)
+
+await harness.run()
 ```
 
-Results are saved to timestamped directories in `.comparison_results/` with HTML reports.
+### Comparison Harness
 
+[Source](../eval_recipes/benchmarking/harness_comparison.py)
 
-## Creating a New Agent
+```python
+from eval_recipes.benchmarking.harness_comparison import ComparisonHarness
 
-Agents are defined in the `data/agents/` directory.
-Each agent is a subdirectory containing the files needed to install and run the agent.
-Included agents are located in [data/agents/](../data/agents/).
+harness = ComparisonHarness(
+    agents_dir=Path,                  # Directory containing agent definitions
+    tasks_dir=Path,                   # Directory containing task definitions
+    runs_dir=Path | None,             # Output directory (default: .comparison_results)
+    environment=dict | None,          # Environment variables for containers
+    max_parallel=5,                   # Maximum concurrent jobs
+    comparison_runs=3,                # Number of comparison runs per task
+    continuation_provider="none",     # "openai", "azure_openai", or "none"
+    continuation_model="gpt-5",       # Model for continuation prompts
+    eval_recipes_version="...",       # Version of eval-recipes in containers
+    report_score_threshold=85.0,      # Score threshold for reports
+)
 
-```
-data/agents/your_agent_name/
-agent.yaml                     # Agent configuration
-install.dockerfile             # Docker commands to install the agent
-command_template.txt           # Liquid template for the command to run the agent
-command_template_continue.txt  # (Optional) Template for agent continuation when follow-up is needed. This command must continue from the previous session/conversation.
-data/                          # (Optional) Agent-specific data files
-```
-
-See [data/agents/gh_cli/](../data/agents/gh_cli/) for an example agent definition.
-
-
-## Using Local Agent Versions
-
-For development and testing, create agent variants that use local source code instead of remote repositories. This enables rapid iteration on agent improvements while testing against benchmarks.
-
-### Creating a Local Agent Variant
-
-1. Create a new agent directory (e.g., `data/agents/your_agent_local/`)
-2. Add `agent.yaml` with `local_source_path` pointing to your local source:
-   ```yaml
-   local_source_path: /absolute/path/to/your/agent/source
-   required_env_vars:
-     - API_KEY
-   ```
-3. Create `install.dockerfile` that installs from `/tmp/agent_source/` (where source is automatically copied)
-4. Copy or create `command_template.txt`
-
-
-### How It Works
-
-1. Harness validates `local_source_path` exists
-2. Collects files, respecting `.gitignore` if present (otherwise excludes `.git`, `.venv`, `__pycache__`, etc.)
-3. Adds files to Docker build context as `agent_source/`
-4. Copies `agent_source` to `/tmp/agent_source/` in container
-5. Your `install.dockerfile` installs from there. This dockerfile should install the agent so that it is globally available. The commands will run in `/project/`, not where the agent's files are.
-6. Image is rebuilt each run, capturing your latest changes
-
-### Usage
-
-```bash
-# Run with local version
-uv run scripts/run_benchmarks.py --agent-filter name=your_agent_local
-
-# Compare local vs production
-uv run scripts/run_benchmarks.py --agent-filter name=your_agent,your_agent_local
+await harness.run(comparison_specs)   # Pass list of ComparisonTaskSpec
 ```
 
-**Notes**: `local_source_path` must be absolute. Build time includes copying all source files. Images rebuild automatically to capture code changes.
 
+## Semantic Test
 
-## Creating a New Task
+LLM-based evaluation functions that use Claude to audit agent work. Used within `test.py` scripts.
 
-Tasks are defined in the `data/tasks/` directory. 
-Each task is a subdirectory containing the files needed to define the task and test the agent's solution.
-Included tasks are available at [data/tasks/](../data/tasks/).
+### `semantic_test`
 
+[Source](../eval_recipes/benchmarking/semantic_test.py)
 
-### Task Directory Structure
+Audits a single agent's work against a rubric.
 
-A template task is available at **[data/_template_task/](../data/_template_task/)** that you can copy as a starting point. The `/create-benchmark-test` command can automate this for you.
+```python
+from eval_recipes.benchmarking.semantic_test import semantic_test
 
+result = await semantic_test(
+    steps="1. Explore /project\n2. Check if README exists\n3. Run the tests",
+    rubric={
+        "readme_exists": "bool - Does README.md exist?",
+        "tests_pass": "bool - Do the tests pass?",
+        "score": "float - Overall score 0-100",  # Required field
+    },
+    context="The agent was asked to create a CLI tool...",
+    working_dir=Path("/project"),
+)
+
+# result.score: float (0-100)
+# result.metadata: dict (other rubric fields)
 ```
-data/tasks/your_task_name/
-task.yaml            # Task configuration (required)
-instructions.txt     # Instructions given to the agent (required)
-test.py              # Python script to test the agent's solution (required for score-based tasks)
-setup.dockerfile     # (Optional) Docker commands to set up the task environment
-task_time_data/      # (Optional) Data files copied before agent runs
-test_time_data/      # (Optional) Data files copied before tests run
+
+### `semantic_test_comparison`
+
+[Source](../eval_recipes/benchmarking/semantic_test_comparison.py)
+
+Compares multiple agents' work on the same task using blind evaluation. Directories are anonymized before comparison.
+
+```python
+from eval_recipes.benchmarking.semantic_test_comparison import semantic_test_comparison
+
+result = await semantic_test_comparison(
+    original_task="Create a CLI tool that...",
+    directories=[
+        Path("/outputs/agent_1/project"),
+        Path("/outputs/agent_2/project"),
+        Path("/outputs/agent_3/project"),
+    ],
+    guidelines="Focus on code quality and completeness",  # Optional
+    log_file=Path("comparison.log"),  # Optional
+)
+
+# result.reasoning: str (bullet-point analysis)
+# result.rankings: list[int] (indices ordered best to worst)
+# result.anonymous_to_index: dict (maps anonymized names to indices)
 ```
-
-### File Descriptions
-
-#### `task.yaml` (Required)
-
-Required fields:
-- `eval_type`: One of `score`, `comparison`, or `both`
-- `task_info`: Object containing:
-  - `difficulty`: One of `easy`, `medium`, or `hard`
-  - `non_deterministic_evals`: Boolean indicating if test evaluations are non-deterministic (e.g., semantic tests using LLMs)
-
-Optional task_info fields:
-- `categories`: List of strings categorizing the task (e.g., `["cli", "automation"]`)
-
-Optional fields:
-- `required_env_vars`: List of environment variables required for the task (e.g., API keys for evaluation)
-- `test_command`: Command to run the test script (score-based tasks only)
-- `timeout`: Timeout in seconds for agent execution
-- `comparison_eval.guidelines`: Task-specific evaluation guidelines for comparison tasks
-
-#### `setup.dockerfile` (Optional)
-
-Contains Docker `RUN` commands to install any dependencies needed for the task or tests. This should be kept minimal, only include resources the agent would not be able to configure themselves.
-
-#### `task_time_data/` (Optional)
-
-Optional directory containing data files that will be copied into the container **before the agent runs**. This is useful for:
-- Providing input files that the agent needs to work with
-- Setting up initial state that the agent's task depends on
-
-Files are copied to `/project` in the container, so they are accessible at relative paths like `./myfile.txt`.
-
-#### `test_time_data/` (Optional)
-
-Optional directory containing data files that will be copied into the container **before tests run** (after the agent finishes). This is useful for:
-- Supplying reference data for semantic tests to validate against
-- Providing expected outputs or golden files for comparison
-- Making tests more deterministic and reproducible
-
-Files are copied to `/project` in the container. Examples: See `data/tasks/style_blender/test_time_data/` and `data/tasks/email_drafting/test_time_data/`
-
-#### `instructions.txt` (Required)
-Plain text instructions that will be passed to the agent. This describes what the agent should build or solve.
-
-#### `test.py` (Required)
-A Python test script that validates the agent's solution and outputs a score.
-
-All test scripts must follow a standardized contract for integration with the harness. See **[data/_template_task/test.py](../data/_template_task/test.py)** for the complete contract specification, detailed documentation, and a reference implementation you can copy when creating new tasks.
-
-
-### Semantic Tests
-
-Many tasks use semantic tests. They are tests where an LLM "auditor" follows specific steps and evaluates outputs against a rubric. This is useful for complex tasks where deterministic validation is difficult.
-See **[data/tasks/style_blender/test.py](../data/tasks/style_blender/test.py)** and **[data/tasks/email_drafting/test.py](../data/tasks/email_drafting/test.py)** for examples of these.
-
-
-### Helper Commands for Task Creation
-
-Two slash commands are available to help create high-quality benchmark tasks:
-- [`/create-benchmark-test`](../.claude/commands/create-benchmark-test.md) - Guides you through creating a complete new benchmark task
-- [`/create-semantic-tests`](../.claude/commands/create-semantic-tests.md) - Helps design semantic tests for a task
-
-
-## Multi-Trial Evaluation
-
-The harness supports running multiple trials of the same agent-task pair to measure consistency and reliability. Use `--num-trials N` to run each task N times.
-Results are aggregated with statistics including mean, median, standard deviation, minimum, and maximum scores.
-Each trial is stored in a separate subdirectory (`trial_1`, `trial_2`, etc.) within the results directory.
-
-
-## Command-Line Options
-
-### Score-Based Benchmarks
-
-The `scripts/run_benchmarks.py` script accepts the following options:
-
-- `--agents-dir`: Path to agents directory
-- `--tasks-dir`: Path to tasks directory
-- `--runs-dir`: Output directory for results. If not provided, creates a new timestamped directory. If provided and exists with prior state, resumes the run.
-- `--agent-filter`: Filter agents by field (format: `field=value`, `field!=value`, or `field=val1,val2` for multiple)
-- `--task-filter`: Filter tasks by field (same format as agent-filter)
-- `--max-parallel-trials`: Maximum number of trials to run in parallel
-- `--num-trials`: Number of trials per agent-task pair
-- `--continuation-provider`: LLM provider for agent continuation - `openai`, `azure_openai`, or `none` to disable
-- `--continuation-model`: Model to use for agent continuation decisions - `gpt-5` or `gpt-5.1`
-- `--report-score-threshold`: Score threshold for generating failure reports
-
-### Comparison Benchmarks
-
-The `scripts/run_comparison_benchmarks.py` script accepts the following options:
-
-- `--config`: Path to YAML config file with comparison specs (default: `data/eval-setups/comparison-all.yaml`)
-- `--agents-dir`: Path to agents directory
-- `--tasks-dir`: Path to tasks directory
-- `--runs-dir`: Output directory for results
-- `--max-parallel`: Maximum number of trials to run in parallel
-- `--comparison-runs`: Number of times to run the comparison evaluation per task (for uncertainty measurement)
-- `--continuation-provider`: LLM provider for agent continuation
-- `--continuation-model`: Model to use for agent continuation decisions
-
-
-## Results
-
-Results include detailed metrics:
-- **Scores**: Task-specific scores from test scripts
-- **Timing**: Agent execution duration and test execution duration
-- **Reports**: Three types of reports are generated:
-  - **Trial failure reports**: Individual analysis for each trial scoring below the threshold
-  - **Consolidated reports**: Per-agent summary of all failures
-  - **HTML reports**: Interactive dashboards with tabbed interface showing overview, task catalog, and per-agent detailed results
 
 
 ## Third-Party Benchmarks
 
-Scripts for integrating third-party benchmarks are located in `scripts/third_party_benchmarks/`. These scripts download benchmark data from external sources and convert them into eval-recipes task format.
+Scripts for integrating third-party benchmarks are located in `scripts/third_party_benchmarks/`. These scripts download benchmark data from external sources and convert them into eval-recipes score-based task format.
 
 ### ARC-AGI-2
 

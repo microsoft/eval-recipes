@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft. All rights reserved.
 
 from collections import defaultdict
+import json
 from pathlib import Path
 from typing import Literal
 
@@ -291,8 +292,6 @@ class FinalAggregateReportJob(Job):
                     error="raw_results.json not found",
                 )
 
-            import json
-
             raw_data = json.loads(raw_results_path.read_text(encoding="utf-8"))
             benchmark_results = ComparisonBenchmarkResults.model_validate(raw_data)
 
@@ -407,20 +406,11 @@ class ComparisonHarness:
     comparisons evaluated via semantic_test_comparison.
     """
 
-    runs_dir: Path
-    agents_dir: Path
-    environment: dict[str, str]
-    max_parallel: int
-    comparison_runs: int
-    continuation_provider: Literal["openai", "azure_openai", "none"]
-    continuation_model: Literal["gpt-5", "gpt-5.1"]
-    eval_recipes_version: str
-    report_score_threshold: float
-
     def __init__(
         self,
-        runs_dir: Path,
-        agents_dir: Path | None = None,
+        agents_dir: Path,
+        tasks_dir: Path,
+        runs_dir: Path | None = None,
         environment: dict[str, str] | None = None,
         max_parallel: int = 5,
         comparison_runs: int = 3,
@@ -432,8 +422,9 @@ class ComparisonHarness:
         """Initialize comparison harness.
 
         Args:
-            runs_dir: Directory to store run outputs.
-            agents_dir: Directory containing agent configs (default: data/agents/).
+            agents_dir: Directory containing agent configs.
+            tasks_dir: Directory containing task configs.
+            runs_dir: Directory to store run outputs (default: .comparison_results/).
             environment: Environment variables to pass to containers.
             max_parallel: Maximum parallel job executions.
             comparison_runs: Number of semantic_test_comparison runs.
@@ -442,13 +433,14 @@ class ComparisonHarness:
             eval_recipes_version: Version of eval-recipes to use.
             report_score_threshold: Score threshold for reports.
         """
-        self.runs_dir = runs_dir
-        self.agents_dir = agents_dir or Path("data/agents")
+        self.runs_dir = runs_dir or Path.cwd() / ".comparison_results"
+        self.agents_dir = agents_dir
+        self.tasks_dir = tasks_dir
         self.environment = environment or {}
         self.max_parallel = max_parallel
         self.comparison_runs = comparison_runs
-        self.continuation_provider = continuation_provider
-        self.continuation_model = continuation_model
+        self.continuation_provider: Literal["openai", "azure_openai", "none"] = continuation_provider
+        self.continuation_model: Literal["gpt-5", "gpt-5.1"] = continuation_model
         self.eval_recipes_version = eval_recipes_version
         self.report_score_threshold = report_score_threshold
 
@@ -457,25 +449,22 @@ class ComparisonHarness:
     async def run(
         self,
         comparison_specs: list[ComparisonTaskSpec],
-        tasks_dir: Path | None = None,
     ) -> Path:
         """Run comparison benchmark.
 
         Args:
             comparison_specs: List of comparison task specifications.
-            tasks_dir: Directory containing task configs (default: data/tasks/).
 
         Returns:
             Path to the results JSON file.
         """
-        tasks_dir = tasks_dir or Path("data/tasks")
 
         # Phase 1: Resolve specs to configs
         logger.info(f"Resolving {len(comparison_specs)} comparison spec(s)")
-        configs = self._resolve_comparison_configs(comparison_specs, tasks_dir)
+        configs = self._resolve_comparison_configs(comparison_specs, self.tasks_dir)
 
         # Phase 2: Build job DAG
-        jobs = self._build_jobs(configs, tasks_dir)
+        jobs = self._build_jobs(configs, self.tasks_dir)
         logger.info(f"Created {len(jobs)} jobs")
 
         # Phase 3: Run jobs with JobRunner

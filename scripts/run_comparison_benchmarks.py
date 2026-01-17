@@ -23,7 +23,7 @@ load_dotenv()
     "--config",
     "config_file",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    default=lambda: Path(__file__).parents[1] / "data" / "eval-setups" / "comparison-all.yaml",
+    default=lambda: Path(__file__).parents[1] / "data" / "eval-setups" / "comparison-default.yaml",
     help="Path to YAML config file with comparison specs",
 )
 @click.option(
@@ -133,6 +133,7 @@ def main(
     harness = ComparisonHarness(
         runs_dir=runs_dir,
         agents_dir=agents_dir,
+        tasks_dir=tasks_dir,
         environment={
             "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
             "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", ""),
@@ -146,7 +147,7 @@ def main(
         continuation_model=cast(Literal["gpt-5", "gpt-5.1"], continuation_model),
     )
 
-    results_path = asyncio.run(harness.run(comparison_specs=comparison_specs, tasks_dir=tasks_dir))
+    results_path = asyncio.run(harness.run(comparison_specs=comparison_specs))
     logger.info(f"Comparison benchmark complete. Results written to: {results_path}")
 
     # Generate HTML report

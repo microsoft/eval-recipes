@@ -9,13 +9,22 @@ from typing import Literal, cast
 import click
 from dotenv import load_dotenv
 from loguru import logger
+import yaml
 
 from eval_recipes.benchmarking.harness import Harness
+from eval_recipes.benchmarking.schemas import ScoreRunSpec
 
 load_dotenv()
 
 
 @click.command()
+@click.option(
+    "--config",
+    "config_file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=lambda: Path(__file__).parents[1] / "data" / "eval-setups" / "score-default.yaml",
+    help="Path to YAML config file with run definition",
+)
 @click.option(
     "--agents-dir",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
@@ -35,30 +44,10 @@ load_dotenv()
     help="Run directory. If not provided, creates a new timestamped dir. If provided and exists, resumes.",
 )
 @click.option(
-    "--agent-filter",
-    "agent_filters",
-    multiple=True,
-    default=("name=amplifier_v1,amplifier_foundation,claude_code,gh_cli,openai_codex",),
-    help="Filter agents by field. Format: field=value or field!=value. Can specify multiple times.",
-)
-@click.option(
-    "--task-filter",
-    "task_filters",
-    multiple=True,
-    default=("name!=sec_10q_extractor,pdf-hr-q1,pdf-hr-q2,pdf-hr-q3,pdf-hr-q5",),
-    help="Filter tasks by field. Format: field=value or field!=value. Can specify multiple times.",
-)
-@click.option(
     "--max-parallel-trials",
     type=int,
     default=20,
     help="Maximum number of trials to run in parallel",
-)
-@click.option(
-    "--num-trials",
-    type=int,
-    default=3,
-    help="Number of times to run each task",
 )
 @click.option(
     "--continuation-provider",
@@ -79,17 +68,22 @@ load_dotenv()
     help="Minimum score threshold to skip report generation (reports generated for scores below this)",
 )
 def main(
+    config_file: Path,
     agents_dir: Path,
     tasks_dir: Path,
     runs_dir: Path | None,
-    agent_filters: tuple[str, ...],
-    task_filters: tuple[str, ...],
     max_parallel_trials: int,
-    num_trials: int,
     continuation_provider: str,
     continuation_model: str,
     report_score_threshold: float,
 ) -> None:
+    # Load run definition from config file
+    with config_file.open(encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+
+    run_definition = ScoreRunSpec.model_validate(config)
+    logger.info(f"Loaded run definition from {config_file}")
+
     if runs_dir is None:
         base_dir = Path(__file__).parents[1] / ".benchmark_results"
         timestamp = datetime.now(UTC).strftime("%Y-%m-%d_%H-%M-%S-%f")[:-3]
@@ -107,9 +101,10 @@ def main(
     logger.info(f"Logging to {log_file}")
 
     harness = Harness(
-        runs_dir=runs_dir,
         agents_dir=agents_dir,
         tasks_dir=tasks_dir,
+        run_definition=run_definition,
+        runs_dir=runs_dir,
         environment={
             "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
             "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", ""),
@@ -117,10 +112,7 @@ def main(
             "AZURE_OPENAI_ENDPOINT": os.environ.get("AZURE_OPENAI_ENDPOINT", ""),
             "AZURE_OPENAI_VERSION": os.environ.get("AZURE_OPENAI_VERSION", ""),
         },
-        agent_filters=list(agent_filters) if agent_filters else None,
-        task_filters=list(task_filters) if task_filters else None,
         max_parallel_trials=max_parallel_trials,
-        num_trials=num_trials,
         continuation_provider=cast(Literal["openai", "azure_openai", "none"], continuation_provider),
         continuation_model=cast(Literal["gpt-5", "gpt-5.1"], continuation_model),
         report_score_threshold=report_score_threshold,
