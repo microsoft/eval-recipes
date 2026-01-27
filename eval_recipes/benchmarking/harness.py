@@ -387,6 +387,7 @@ class Harness:
                 ),
                 data_dir=data_dir if data_dir.exists() and data_dir.is_dir() else None,
                 local_source_path=local_source_path,
+                agent_log_hint=agent_yaml.get("agent_log_hint"),
             )
 
         logger.info(f"Loaded {len(agents)} agent(s)")

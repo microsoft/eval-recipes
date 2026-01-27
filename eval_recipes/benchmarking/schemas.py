@@ -16,6 +16,7 @@ class AgentConfig(BaseModel):
     command_template_continue: str | None = None  # Optional command Liquid template for continuing agent conversation
     data_dir: Path | None = None  # Optional path to agent data directory
     local_source_path: Path | None = None  # Optional path to local agent source code for development
+    agent_log_hint: str | None = None  # Optional hint for where agent stores logs in the container
 
 
 class TaskInfo(BaseModel):
