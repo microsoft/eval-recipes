@@ -1,2 +1,3 @@
 required_env_vars:
   - ANTHROPIC_API_KEY
+agent_log_hint: "Session logs are under `~/.amplifier/projects/`"

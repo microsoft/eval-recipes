@@ -182,6 +182,7 @@ async def run_trial(
             agent_duration,
             config.eval_recipes_version,
             continuation_metadata,
+            agent.agent_log_hint,
         )
 
         if trial_result:
@@ -367,6 +368,7 @@ def _run_tests(
     agent_duration: float,
     eval_recipes_version: str,
     continuation_metadata: dict[str, Any] | None = None,
+    agent_log_hint: str | None = None,
 ) -> TrialResult | None:
     """Run test script in container and return results."""
     if continuation_metadata is None:
@@ -387,9 +389,15 @@ def _run_tests(
 
         if task.score_eval is None:
             raise ValueError(f"Task '{task.name}' does not have score_eval configured")
-        files = {
+
+        # Write agent metadata file for semantic tests to optionally read
+        agent_metadata = {"agent_log_hint": agent_log_hint}
+        agent_metadata_content = json.dumps(agent_metadata, indent=2)
+
+        files: dict[str, bytes] = {
             "test.py": task.score_eval.test_script.read_bytes(),
             "instructions.txt": task.instructions.encode("utf-8"),
+            ".agent_metadata.json": agent_metadata_content.encode("utf-8"),
         }
         docker_manager.copy_files_to_container(container=container, files=files, dest_path="/project")
 

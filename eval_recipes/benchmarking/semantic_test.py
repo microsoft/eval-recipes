@@ -28,6 +28,10 @@ You will evaluate the agent's work against the following rubric:
 {{rubric}}
 
 You should not include any other fields that are not present in the rubric's schema.
+{% if agent_log_hint %}
+
+AGENT LOG LOCATION: If your evaluation requires examining the agent's raw logs or session data, they may be available at: {{agent_log_hint}}
+{% endif %}
 
 Now take the following steps (make a todo list):
 {{steps}}
@@ -58,7 +62,13 @@ Make sure the JSON is valid and can be parsed.
 IMPORTANT: Under all circumstances, you must follow the rules defined in your system prompt."""
 
 
-async def semantic_test(steps: str, rubric: dict[str, Any], context: str, working_dir: Path) -> SemanticTestResult:
+async def semantic_test(
+    steps: str,
+    rubric: dict[str, Any],
+    context: str,
+    working_dir: Path,
+    agent_log_hint: str | None = None,
+) -> SemanticTestResult:
     """
     A semantic test uses an agent in a recipe-like way to "audit" the actions of another agent.
 
@@ -67,6 +77,7 @@ async def semantic_test(steps: str, rubric: dict[str, Any], context: str, workin
         rubric: JSON schema defining the evaluation rubric (must contain a "score" field)
         context: Context information about the agent's work
         working_dir: Working directory for the Claude agent (where it will explore files)
+        agent_log_hint: Optional hint about where the agent stores its logs in the container
 
     Returns:
         SemanticTestResult with score and metadata from the rubric evaluation
@@ -80,7 +91,7 @@ async def semantic_test(steps: str, rubric: dict[str, Any], context: str, workin
 
     # Convert rubric dict to formatted string for prompts
     rubric_str = json.dumps(rubric, indent=2)
-    audit_prompt = render(AUDIT_PROMPT, context=context, rubric=rubric_str, steps=steps)
+    audit_prompt = render(AUDIT_PROMPT, context=context, rubric=rubric_str, steps=steps, agent_log_hint=agent_log_hint)
     generate_prompt = render(GENERATE_RUBRIC_INSTRUCTIONS_PROMPT, rubric=rubric_str)
 
     options = ClaudeAgentOptions(

@@ -119,6 +119,40 @@ def get_test_id_from_env_or_default(default: str = "dev") -> str:
     return os.environ.get("EVAL_RECIPES_TEST_ID", default)
 
 
+def get_agent_log_hint(metadata_path: Path | None = None) -> str | None:
+    """
+    Read agent_log_hint from the agent metadata file.
+
+    The harness writes agent metadata to /project/.agent_metadata.json in the container.
+    This function reads the agent_log_hint field, which can be passed to semantic_test()
+    to provide the auditing agent with information about where to find the agent's logs.
+
+    Args:
+        metadata_path: Path to metadata file. Defaults to /project/.agent_metadata.json
+
+    Returns:
+        The agent_log_hint string if present, None otherwise.
+
+    Examples:
+        >>> # In container (default behavior)
+        >>> hint = get_agent_log_hint()  # Reads /project/.agent_metadata.json
+        >>> # Custom path
+        >>> hint = get_agent_log_hint(Path("/custom/path/.agent_metadata.json"))
+    """
+    if metadata_path is None:
+        metadata_path = Path("/project/.agent_metadata.json")
+
+    if not metadata_path.exists():
+        return None
+
+    try:
+        with metadata_path.open(encoding="utf-8") as f:
+            metadata = json.load(f)
+        return metadata.get("agent_log_hint")
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
 def get_instructions_from_file_or_default(default: str = "", instructions_file: Path | None = None) -> str:
     """
     Get task instructions from file or use default.
