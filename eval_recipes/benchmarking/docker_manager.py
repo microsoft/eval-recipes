@@ -1,5 +1,6 @@
 # Copyright (c) Microsoft. All rights reserved.
 
+import importlib.metadata
 import io
 from io import BytesIO
 from pathlib import Path
@@ -442,31 +443,34 @@ class DockerManager:
 
 
 def collect_eval_recipes_package() -> dict[str, bytes]:
-    """Collect all project files for copying to container.
+    """Collect eval_recipes package files for copying to container.
 
     Works for both local development and installed packages.
-    Uses .gitignore for filtering when available (local dev),
-    falls back to basic __pycache__ filtering (installed packages).
+    - Development: Uses .gitignore for filtering, copies project root
+    - Installed: Copies only eval_recipes/, generates minimal pyproject.toml
 
     Returns:
         Dictionary mapping relative paths to file contents as bytes.
     """
-
-    # Find project root via this file's location
-    # docker_manager.py is at eval_recipes/benchmarking_v2/docker_manager.py
+    # Find eval_recipes package directory
     eval_recipes_dir = Path(__file__).parents[1]
-    project_root = eval_recipes_dir.parent
+    dev_project_root = eval_recipes_dir.parent
+    pyproject_path = dev_project_root / "pyproject.toml"
 
-    # Try to load .gitignore (exists in local dev, not in installed packages)
-    gitignore_path = project_root / ".gitignore"
-    # Always exclude .git directory (not in .gitignore since git handles it automatically)
-    base_patterns = [".git/"]
-    if gitignore_path.exists():
-        patterns = base_patterns + gitignore_path.read_text(encoding="utf-8").splitlines()
-        spec = pathspec.PathSpec.from_lines("gitwildmatch", patterns)
+    if pyproject_path.exists():
+        # Development mode: copy entire project with gitignore filtering
+        project_root = dev_project_root
+        gitignore_path = project_root / ".gitignore"
+        base_patterns = [".git/"]
+        if gitignore_path.exists():
+            patterns = base_patterns + gitignore_path.read_text(encoding="utf-8").splitlines()
+            spec = pathspec.PathSpec.from_lines("gitwildmatch", patterns)
+        else:
+            spec = pathspec.PathSpec.from_lines("gitwildmatch", [*base_patterns, "__pycache__/", "*.pyc"])
     else:
-        # Fallback for installed packages
-        spec = pathspec.PathSpec.from_lines("gitwildmatch", [*base_patterns, "__pycache__/", "*.pyc"])
+        # Installed package mode: only copy eval_recipes directory
+        project_root = eval_recipes_dir
+        spec = pathspec.PathSpec.from_lines("gitwildmatch", ["__pycache__/", "*.pyc"])
 
     files: dict[str, bytes] = {}
     for file_path in project_root.rglob("*"):
@@ -476,4 +480,42 @@ def collect_eval_recipes_package() -> dict[str, bytes]:
         if not spec.match_file(str(rel_path)):
             files[str(rel_path)] = file_path.read_bytes()
 
+    # In installed mode, generate pyproject.toml for uv to resolve dependencies
+    if not pyproject_path.exists():
+        pyproject_content = _generate_minimal_pyproject()
+        files["pyproject.toml"] = pyproject_content.encode("utf-8")
+
     return files
+
+
+def _generate_minimal_pyproject() -> str:
+    """Generate minimal pyproject.toml for installed package mode.
+
+    Uses importlib.metadata to extract version and dependencies from
+    the installed eval_recipes package.
+
+    Returns:
+        A minimal pyproject.toml content string that allows uv to resolve dependencies.
+    """
+    try:
+        version = importlib.metadata.version("eval_recipes")
+        requires = importlib.metadata.requires("eval_recipes") or []
+        # Filter to only direct dependencies (no extras, no markers we can't handle)
+        deps = [r.split(";")[0].strip() for r in requires if "extra ==" not in r]
+    except importlib.metadata.PackageNotFoundError:
+        version = "0.0.0"
+        deps = []
+
+    deps_str = ",\n    ".join(f'"{d}"' for d in deps)
+    return f'''[project]
+name = "eval_recipes"
+version = "{version}"
+requires-python = ">=3.11"
+dependencies = [
+    {deps_str}
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+'''
