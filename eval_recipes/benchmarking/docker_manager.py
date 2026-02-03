@@ -473,15 +473,21 @@ def collect_eval_recipes_package() -> dict[str, bytes]:
         spec = pathspec.PathSpec.from_lines("gitwildmatch", ["__pycache__/", "*.pyc"])
 
     files: dict[str, bytes] = {}
+    is_installed_mode = not pyproject_path.exists()
+
     for file_path in project_root.rglob("*"):
         if not file_path.is_file():
             continue
         rel_path = file_path.relative_to(project_root)
         if not spec.match_file(str(rel_path)):
+            # In installed mode, prefix with eval_recipes/ to maintain package structure
+            # This ensures hatchling can find the package directory
+            if is_installed_mode:
+                rel_path = Path("eval_recipes") / rel_path
             files[str(rel_path)] = file_path.read_bytes()
 
     # In installed mode, generate pyproject.toml for uv to resolve dependencies
-    if not pyproject_path.exists():
+    if is_installed_mode:
         pyproject_content = _generate_minimal_pyproject()
         files["pyproject.toml"] = pyproject_content.encode("utf-8")
 
