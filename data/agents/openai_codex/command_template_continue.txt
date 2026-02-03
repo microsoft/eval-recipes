@@ -1,1 +1,0 @@
-printenv OPENAI_API_KEY | codex login --with-api-key && echo "{{task_instructions}}" | codex exec --skip-git-repo-check --json --dangerously-bypass-approvals-and-sandbox -c model="gpt-5.1-codex-max" -c model_reasoning_effort="high" resume --last

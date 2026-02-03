@@ -7,12 +7,12 @@ Checks if Conclusion.txt contains the exact conclusion from https://arxiv.org/ab
 Scoring: 100 points for 0-5 character differences (buffer), -1 point per additional character difference (using Levenshtein distance).
 """
 
-import sys
 from pathlib import Path
+import sys
 
 import click
 
-from eval_recipes.benchmarking.test_utils import (
+from eval_recipes.benchmarking.evaluation.test_utils import (
     get_instructions_from_file_or_default,
     get_test_id_from_env_or_default,
     levenshtein_distance,

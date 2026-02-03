@@ -1,19 +1,18 @@
 # Copyright (c) Microsoft. All rights reserved.
 
 import asyncio
-import sys
 from pathlib import Path
+import sys
 
 import click
 from loguru import logger
 
-from eval_recipes.benchmarking.semantic_test import semantic_test
-from eval_recipes.benchmarking.test_utils import (
+from eval_recipes.benchmarking.evaluation.semantic_test import semantic_test
+from eval_recipes.benchmarking.evaluation.test_utils import (
     get_instructions_from_file_or_default,
     get_test_id_from_env_or_default,
     write_test_result,
 )
-
 
 STEPS_1_RUN_MICROSOFT_2025 = """1. Find and read the README file to understand how to use the tool.
 2. Based on the README instructions, determine the command to run the tool with these inputs:

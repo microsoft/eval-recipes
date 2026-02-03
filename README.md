@@ -22,14 +22,14 @@ which are a mix of code and LLM calls to achieve a desired tradeoff between flex
 ```bash
 # Benchmarking requires certain prerequisites, see the full documentation for more details.
 # With uv (add to project dependencies, pinned to a release tag)
-uv add "eval-recipes @ git+https://github.com/microsoft/eval-recipes@v0.0.31"
+uv add "eval-recipes @ git+https://github.com/microsoft/eval-recipes@v0.0.32"
 
 # With pip
-pip install "git+https://github.com/microsoft/eval-recipes@v0.0.31"
+pip install "git+https://github.com/microsoft/eval-recipes@v0.0.32"
 ```
 
 > [!WARNING]
-> This library is very early and everything is subject to change. Consider pinning the dependency to a commit with the command like: `uv pip install "git+https://github.com/microsoft/eval-recipes@v0.0.20"`
+> This library is very early and everything is subject to change. Consider pinning the dependency to a release.
 
 
 # Benchmarking
@@ -42,22 +42,26 @@ Additional features include agent continuation (automatically providing follow-u
 
 1. Create agent definition(s). Examples are provided in [data/agents](./data/agents).
 1. Create task definition(s). Examples are provided in [data/tasks](./data/tasks).
-1. Create a run configuration. Examples are provided in [data/eval-setups](./data/eval-setups).
+1. Create a benchmark configuration. Examples are provided in [data/benchmarks](./data/benchmarks).
 
 ```python
-import yaml
-from eval_recipes.benchmarking.harness import Harness
-from eval_recipes.benchmarking.schemas import ScoreRunSpec
+import asyncio
+from pathlib import Path
 
-with Path("score-default.yaml").open(encoding="utf-8") as f:
-    run_definition = ScoreRunSpec(**yaml.safe_load(f))
+from eval_recipes.benchmarking.loaders import load_agents, load_benchmark, load_tasks
+from eval_recipes.benchmarking.pipelines.score_pipeline import ScorePipeline
 
-harness = Harness(
-    agents_dir=Path("data/agents"),
-    tasks_dir=Path("data/tasks"),
-    run_definition=run_definition,
+agents = load_agents(Path("data/agents"))
+tasks = load_tasks(Path("data/tasks"))
+benchmark = load_benchmark(Path("data/benchmarks/full_benchmark.yaml"))
+
+pipeline = ScorePipeline(
+    benchmark=benchmark.score_benchmark,
+    agents=agents,
+    tasks=tasks,
+    output_dir=Path(".benchmark_results"),
 )
-asyncio.run(harness.run())
+asyncio.run(pipeline.run())
 ```
 
 See [docs/BENCHMARKING.md](./docs/BENCHMARKING.md) for full details, including installation prerequisites.

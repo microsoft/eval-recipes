@@ -4,7 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from eval_recipes.benchmarking.semantic_test_comparison import semantic_test_comparison
+from eval_recipes.benchmarking.evaluation.semantic_test_comparison import semantic_test_comparison
+from eval_recipes.benchmarking.schemas import ComparisonResult
 
 
 def setup_comparison_projects(base_dir: Path) -> list[Path]:
@@ -80,12 +81,15 @@ Include proper documentation and a README.md file."""
         guidelines=guidelines,
     )
 
-    # Verify result structure
+    # Verify result is ComparisonResult
+    assert isinstance(result, ComparisonResult)
     assert isinstance(result.reasoning, str)
     assert len(result.reasoning) > 0
     assert isinstance(result.rankings, list)
     assert len(result.rankings) == 3
     assert set(result.rankings) == {0, 1, 2}  # All indices present
+    assert isinstance(result.anonymous_to_index, dict)
 
     print(f"Reasoning: {result.reasoning}")
     print(f"Rankings: {result.rankings}")
+    print(f"Anonymous mapping: {result.anonymous_to_index}")

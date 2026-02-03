@@ -1,1 +1,0 @@
-amplifier run --profile toolkit:toolkit-dev --verbose "{{task_instructions}}"

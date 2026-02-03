@@ -1,0 +1,102 @@
+comparison_benchmark:
+  benchmark_type: comparison
+  continuation_provider: openai
+  continuation_model: gpt-5.2
+  comparison_runs: 7
+  comparison_benchmarks:
+    - task_name: ppt-1
+      agent_ids:
+        - claude_code
+        - gh_cli
+        - amplifier_foundation
+    - task_name: ppt-2
+      agent_ids:
+        - claude_code
+        - gh_cli
+        - amplifier_foundation
+    - task_name: ppt-3
+      agent_ids:
+        - claude_code
+        - gh_cli
+        - amplifier_foundation
+
+score_benchmark:
+  benchmark_type: score
+  continuation_provider: openai
+  continuation_model: gpt-5.2
+  score_benchmarks:
+    - agent_id: claude_code
+      task_names:
+        - arxiv_conclusion_extraction
+        - arxiv_paper_summarizer
+        - code-discrepancy-docs-knack
+        - code-discrepancy-docstrings-grasp
+        - code-discrepancy-tutorials-grasp
+        - cpsc_recall_monitor
+        - cross_repo_improvement_tool
+        - email_drafting
+        - gdpval_extraction
+        - github_docs_extractor
+        - linkedin_drafting
+        - markdown_deck_converter
+        - news_research_tool
+        - pdf-hr-q1
+        - pdf-hr-q2
+        - pdf-hr-q3
+        - pdf-hr-q4
+        - pdf-hr-q5
+        - product_review_finder
+        - repo_embedding_server
+        - sec_10q_extractor
+        - style_blender
+      trials: 1
+    - agent_id: gh_cli
+      task_names:
+        - arxiv_conclusion_extraction
+        - arxiv_paper_summarizer
+        - code-discrepancy-docs-knack
+        - code-discrepancy-docstrings-grasp
+        - code-discrepancy-tutorials-grasp
+        - cpsc_recall_monitor
+        - cross_repo_improvement_tool
+        - email_drafting
+        - gdpval_extraction
+        - github_docs_extractor
+        - linkedin_drafting
+        - markdown_deck_converter
+        - news_research_tool
+        - pdf-hr-q1
+        - pdf-hr-q2
+        - pdf-hr-q3
+        - pdf-hr-q4
+        - pdf-hr-q5
+        - product_review_finder
+        - repo_embedding_server
+        - sec_10q_extractor
+        - style_blender
+      trials: 1
+    - agent_id: amplifier_foundation
+      task_names:
+        - arxiv_conclusion_extraction
+        - arxiv_paper_summarizer
+        - code-discrepancy-docs-knack
+        - code-discrepancy-docstrings-grasp
+        - code-discrepancy-tutorials-grasp
+        - cpsc_recall_monitor
+        - cross_repo_improvement_tool
+        - email_drafting
+        - gdpval_extraction
+        - github_docs_extractor
+        - linkedin_drafting
+        - markdown_deck_converter
+        - news_research_tool
+        - pdf-hr-q1
+        - pdf-hr-q2
+        - pdf-hr-q3
+        - pdf-hr-q4
+        - pdf-hr-q5
+        - product_review_finder
+        - repo_embedding_server
+        - sec_10q_extractor
+        - style_blender
+      trials: 1

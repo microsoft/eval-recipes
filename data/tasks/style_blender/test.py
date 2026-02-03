@@ -1,19 +1,18 @@
 # Copyright (c) Microsoft. All rights reserved.
 
 import asyncio
-import sys
 from pathlib import Path
+import sys
 
 import click
 from loguru import logger
 
-from eval_recipes.benchmarking.semantic_test import semantic_test
-from eval_recipes.benchmarking.test_utils import (
+from eval_recipes.benchmarking.evaluation.semantic_test import semantic_test
+from eval_recipes.benchmarking.evaluation.test_utils import (
     get_instructions_from_file_or_default,
     get_test_id_from_env_or_default,
     write_test_result,
 )
-
 
 # Define Semantic Test 1: Check for 3-Stage Pipeline Implementation
 
@@ -166,11 +165,7 @@ async def run_test(test_id: str, output_dir: Path, instructions_file: Path | Non
 
         # Calculate final score with weighted average
         # Weights: pipeline (20%), run and validate (35%), test data run and full validation (45%)
-        final_score = (
-            result_1.score * 0.20
-            + result_2.score * 0.35
-            + result_3.score * 0.45
-        )
+        final_score = result_1.score * 0.20 + result_2.score * 0.35 + result_3.score * 0.45
 
         metadata = {
             "instructions": instructions,

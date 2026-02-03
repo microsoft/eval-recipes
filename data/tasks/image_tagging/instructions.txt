@@ -1,5 +1,0 @@
-I want to create an image tagging system that uses a small vision language model to index a folder of images and output the result to a csv file.
-The csv file should have a mapping of the file path, file name, and tags.
-You must use Ollama and the local model `gemma3:4b-it-q4_K_M`
-Make it a python script that I can run, be sure to explain how to use it.
-Make sure when setting up the prompt you give examples for how tags should be extracted from the images since this is a very small model.

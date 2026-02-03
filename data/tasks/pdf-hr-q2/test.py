@@ -7,13 +7,13 @@ Checks if the answer contains the correct employee count (263) within 1% toleran
 Scoring: 100 points if within 1% tolerance, 0 otherwise.
 """
 
+from pathlib import Path
 import re
 import sys
-from pathlib import Path
 
 import click
 
-from eval_recipes.benchmarking.test_utils import (
+from eval_recipes.benchmarking.evaluation.test_utils import (
     get_instructions_from_file_or_default,
     get_test_id_from_env_or_default,
     load_text_from_path_or_content,

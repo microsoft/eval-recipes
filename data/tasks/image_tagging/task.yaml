@@ -1,6 +1,4 @@
-timeout: 4500
-required_env_vars:
-  - ANTHROPIC_API_KEY
+name: image_tagging
 task_info:
   difficulty: easy
   non_deterministic_evals: true
@@ -8,4 +6,28 @@ task_info:
     - cli_tool
     - automation
     - ai_tool
-test_command: uv run --no-project /project/test.py
+evaluation_configs:
+  - type: score
+    test_script: test.py
+    test_command: uv run --no-project /project/test.py
+dockerfile_portion: |
+  # Install zstd (required by Ollama installer for extraction)
+  RUN apt-get update && apt-get install -y --no-install-recommends zstd && rm -rf /var/lib/apt/lists/*
+
+  # Install Ollama
+  RUN curl -fsSL https://ollama.com/install.sh | sh
+
+  # Start Ollama service in the background and pull the embedding model
+  RUN nohup ollama serve > /dev/null 2>&1 & \
+      sleep 5 && \
+      ollama pull gemma3:4b-it-q4_K_M
+instructions: |
+  I want to create an image tagging system that uses a small vision language model to index a folder of images and output the result to a csv file.
+  The csv file should have a mapping of the file path, file name, and tags.
+  You must use Ollama and the local model `gemma3:4b-it-q4_K_M`
+  Make it a python script that I can run, be sure to explain how to use it.
+  Make sure when setting up the prompt you give examples for how tags should be extracted from the images since this is a very small model.
+test_time_files:
+  - source: test_time_data
+    dest: /project
+timeout: 4500

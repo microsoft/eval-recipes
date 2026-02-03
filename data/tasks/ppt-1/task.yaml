@@ -1,8 +1,21 @@
-eval_type: comparison
-timeout: 3600
+name: ppt-1
 task_info:
   difficulty: medium
   non_deterministic_evals: true
   categories:
     - ppt
     - office
+evaluation_configs:
+  - type: comparison
+    guidelines: null
+dockerfile_portion: ""
+instructions: |
+  First, extract the ppt-1.zip file:
+  unzip ppt-1.zip
+
+  I need to put together a PowerPoint for our upcoming CloudSync Pro feature launch. I've got all the source material in the this folder but it's scatered.
+  Create a presentation called "CloudSync_Pro_Product_Brief.pptx" that consolidates everything?
+task_time_files:
+  - source: task_time_data
+    dest: /project
+timeout: 3600

@@ -1,2 +1,12 @@
-required_env_vars:
-  - OPENAI_API_KEY
+id: openai_codex
+agent_name: openai_codex
+dockerfile_portion: |
+  RUN npm i -g @openai/codex
+installation_files: []
+runtime_files: []
+command_template: >-
+  printenv OPENAI_API_KEY | codex login --with-api-key && codex exec --skip-git-repo-check --json --dangerously-bypass-approvals-and-sandbox -c model="gpt-5.1-codex-max" -c model_reasoning_effort="high" "{{task_instructions}}"
+command_template_continue: >-
+  printenv OPENAI_API_KEY | codex login --with-api-key && echo "{{task_instructions}}" | codex exec --skip-git-repo-check --json --dangerously-bypass-approvals-and-sandbox -c model="gpt-5.1-codex-max" -c model_reasoning_effort="high" resume --last
+agent_logs_paths: []
+source_code_path: null

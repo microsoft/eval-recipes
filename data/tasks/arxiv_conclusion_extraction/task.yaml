@@ -1,7 +1,16 @@
+name: arxiv_conclusion_extraction
 task_info:
   difficulty: easy
   non_deterministic_evals: false
   categories:
     - document_processing
     - research
-test_command: uv run --no-project /project/test.py --conclusion /project/Conclusion.txt
+evaluation_configs:
+  - type: score
+    test_script: test.py
+    test_command: uv run --no-project /project/test.py --conclusion /project/Conclusion.txt
+dockerfile_portion: ""
+instructions: >-
+  Can you download the paper at https://arxiv.org/abs/2411.10541 and write to a file
+  named "Conclusion.txt" the exact conclusion of the paper (not including the name of the section)?
+timeout: 1800
