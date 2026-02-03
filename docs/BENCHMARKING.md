@@ -8,10 +8,10 @@ This module provides a benchmarking harness for evaluating AI agents within isol
 ```bash
 # Install prerequisites below first.
 # With uv (add to project dependencies, pinned to a release tag)
-uv add "eval-recipes @ git+https://github.com/microsoft/eval-recipes@v0.0.32"
+uv add "eval-recipes @ git+https://github.com/microsoft/eval-recipes@v0.0.33"
 
 # With pip
-pip install "git+https://github.com/microsoft/eval-recipes@v0.0.32"
+pip install "git+https://github.com/microsoft/eval-recipes@v0.0.33"
 ```
 
 

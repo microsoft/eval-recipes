@@ -22,10 +22,10 @@ which are a mix of code and LLM calls to achieve a desired tradeoff between flex
 ```bash
 # Benchmarking requires certain prerequisites, see the full documentation for more details.
 # With uv (add to project dependencies, pinned to a release tag)
-uv add "eval-recipes @ git+https://github.com/microsoft/eval-recipes@v0.0.32"
+uv add "eval-recipes @ git+https://github.com/microsoft/eval-recipes@v0.0.33"
 
 # With pip
-pip install "git+https://github.com/microsoft/eval-recipes@v0.0.32"
+pip install "git+https://github.com/microsoft/eval-recipes@v0.0.33"
 ```
 
 > [!WARNING]
