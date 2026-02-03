@@ -1,1 +1,0 @@
-amplifier run --bundle foundation --verbose --output-format "json" --model "claude-opus-4-5" --provider anthropic "{{task_instructions}}"

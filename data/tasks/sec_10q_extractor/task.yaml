@@ -1,6 +1,4 @@
-timeout: 5400
-required_env_vars:
-  - ANTHROPIC_API_KEY
+name: sec_10q_extractor
 task_info:
   difficulty: hard
   non_deterministic_evals: true
@@ -9,4 +7,26 @@ task_info:
     - finance
     - document_processing
     - data_extraction
-test_command: uv run --no-project /project/test.py
+evaluation_configs:
+  - type: score
+    test_script: test.py
+    test_command: uv run --no-project /project/test.py
+dockerfile_portion: ""
+instructions: |
+  Build a CLI tool that takes a company name and date (month and year) and extracts financial data from their SEC 10-Q filing.
+
+  The tool should:
+  1. Find the first 10-Q form filed before the given date for that company
+  2. Save the filing to a file
+  3. Extract these data points and output to a CSV:
+     - Total revenue for the quarter
+     - EPS for the quarter
+     - Summary of risks
+
+  Use the official company name as it appears in SEC filings (like "Apple Inc." or "Microsoft Corporation").
+
+  Include a README with usage instructions.
+test_time_files:
+  - source: test_time_data
+    dest: /project
+timeout: 5400

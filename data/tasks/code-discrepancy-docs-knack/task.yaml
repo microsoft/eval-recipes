@@ -1,9 +1,22 @@
-timeout: 4500
-required_env_vars:
-  - ANTHROPIC_API_KEY
+name: code-discrepancy-docs-knack
 task_info:
   difficulty: medium
   non_deterministic_evals: true
   categories:
     - code-docs-discrepancy
-test_command: uv run --no-project /project/test.py
+evaluation_configs:
+  - type: score
+    test_script: test.py
+    test_command: uv run --no-project /project/test.py
+dockerfile_portion: |
+  RUN apt-get install -y unzip
+instructions: |
+  First, extract the knack.zip file to the knack/ directory:
+  unzip knack.zip -d knack
+
+  I'm working on cleaning up the knack framework docs, could you find me all discrepancies in the documentation versus what is actually implemented/how it works?
+  Please place your findings in DISCREPANCIES.md so I can review them.
+task_time_files:
+  - source: task_time_data
+    dest: /project
+timeout: 4500

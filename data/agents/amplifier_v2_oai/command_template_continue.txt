@@ -1,1 +1,0 @@
-amplifier continue --profile dev-openai "{{task_instructions}}"

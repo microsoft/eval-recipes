@@ -1,5 +1,4 @@
-eval_type: comparison
-timeout: 3600
+name: ppt-3
 task_info:
   difficulty: hard
   non_deterministic_evals: true
@@ -7,3 +6,31 @@ task_info:
     - ppt
     - excel
     - office
+evaluation_configs:
+  - type: comparison
+    guidelines: null
+dockerfile_portion: ""
+instructions: |
+  First, extract the ppt-3.zip file:
+  unzip ppt-3.zip
+
+  Put together our Q4 Sales Review materials for the exec meeting next week.
+
+  An Excel workbook called "Q4_Sales_Analysis.xlsx" with:
+     - A summary sheet showing total revenue by month and region
+     - Pivot tables breaking down performance by product category and region
+     - At least one chart visualizing the quarterly trend
+     - A returns analysis section
+
+  A PowerPoint called "Q4_Sales_Executive_Summary.pptx" that summarizes the key insights:
+     - Executive summary of overall performance vs quota
+     - Regional highlights (wins, challenges, notable deals)
+     - Product performance breakdown
+     - Key concerns (returns, churn, lost deals)
+     - Recommendations for Q1
+
+  The execs want the story, not just the numbers - so pull in the qualitative feedback from the regional teams too.
+task_time_files:
+  - source: task_time_data
+    dest: /project
+timeout: 3600

@@ -14,14 +14,14 @@ Scoring:
 """
 
 import asyncio
-import sys
 from pathlib import Path
+import sys
 
 import click
 from loguru import logger
 
-from eval_recipes.benchmarking.semantic_test import semantic_test
-from eval_recipes.benchmarking.test_utils import (
+from eval_recipes.benchmarking.evaluation.semantic_test import semantic_test
+from eval_recipes.benchmarking.evaluation.test_utils import (
     get_instructions_from_file_or_default,
     get_test_id_from_env_or_default,
     write_test_result,

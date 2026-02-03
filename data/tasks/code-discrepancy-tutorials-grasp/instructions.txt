@@ -1,5 +1,0 @@
-First, extract the graspologic.zipfile to the graspologic/ directory:
-unzip graspologic.zip -d graspologic
-
-I'm working on cleaning up the graspologic tutorials, could you find me all discrepancies in the documentation versus what is actually implemented/how it works?
-Please place your findings in DISCREPANCIES.md so I can review them.

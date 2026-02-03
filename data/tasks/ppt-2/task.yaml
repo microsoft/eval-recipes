@@ -1,5 +1,4 @@
-eval_type: comparison
-timeout: 3600
+name: ppt-2
 task_info:
   difficulty: hard
   non_deterministic_evals: true
@@ -7,3 +6,36 @@ task_info:
     - ppt
     - doc
     - office
+evaluation_configs:
+  - type: comparison
+    guidelines: null
+dockerfile_portion: ""
+instructions: |
+  First, extract the ppt-2.zip file:
+  unzip ppt-2.zip
+
+  We're prepping for our Series A fundraise and I need your help putting together investor materials.
+
+  Can you create TWO documents for me?
+
+  1. "Investor_Pitch.pptx" - A proper pitch deck with:
+     - Title slide with company name and tagline
+     - Problem/Opportunity
+     - Our Solution
+     - Market Size (TAM/SAM/SOM)
+     - Business Model & Traction
+     - Competitive Landscape
+     - Team
+     - Financial Projections & Ask
+     - Contact info
+
+  2. "One_Page_Summary.docx" - A concise one-pager that investors can quickly scan, covering:
+     - Company overview (2-3 sentences)
+     - Key metrics/traction
+     - Market opportunity
+     - What we're raising and use of funds
+     - Team highlights
+task_time_files:
+  - source: task_time_data
+    dest: /project
+timeout: 3600

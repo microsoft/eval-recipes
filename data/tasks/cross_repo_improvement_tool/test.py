@@ -1,19 +1,18 @@
 # Copyright (c) Microsoft. All rights reserved.
 
 import asyncio
-import sys
 from pathlib import Path
+import sys
 
 import click
 from loguru import logger
 
-from eval_recipes.benchmarking.semantic_test import semantic_test
-from eval_recipes.benchmarking.test_utils import (
+from eval_recipes.benchmarking.evaluation.semantic_test import semantic_test
+from eval_recipes.benchmarking.evaluation.test_utils import (
     get_instructions_from_file_or_default,
     get_test_id_from_env_or_default,
     write_test_result,
 )
-
 
 # Test configuration - repos to analyze
 SOURCE_REPO = "github/spec-kit"
@@ -26,7 +25,7 @@ while maintaining its conversational terminal-native experience."""
 
 # Define Semantic Test 1: Architecture & Implementation Review
 
-STEPS_1_ARCHITECTURE_REVIEW = f"""1. Explore the code that the agent generated in this project directory to understand the tool's architecture.
+STEPS_1_ARCHITECTURE_REVIEW = """1. Explore the code that the agent generated in this project directory to understand the tool's architecture.
 2. Check if the tool uses repomix correctly:
    - Look for where it invokes repomix (e.g., `npx repomix@latest` or similar)
    - Verify it can handle remote GitHub repositories (not just local repos)

@@ -1,11 +1,35 @@
-timeout: 4500
-required_env_vars:
-  - ANTHROPIC_API_KEY
-  - OPENAI_API_KEY
+name: linkedin_drafting
 task_info:
   difficulty: hard
   non_deterministic_evals: true
   categories:
     - cli_tool
     - writing
-test_command: uv run --no-project /project/test.py
+evaluation_configs:
+  - type: score
+    test_script: test.py
+    test_command: uv run --no-project /project/test.py
+dockerfile_portion: ""
+instructions: |
+  I need help creating a tool for drafting my LinkedIn posts. My writing process has several stages and I'd like to automate it.
+
+  Here's how I typically write:
+  - Start by figuring out what's important and pick topics to cover
+  - Find a metaphor or story that makes technical concepts accessible
+  - Draft explanations for any jargon I need to use
+  - Write some rough creative paragraphs
+  - Come up with image prompts for visuals
+  - Do research to find references and incorporate them
+  - Clean up the draft to match my previous writing style
+  - Generate images
+  - Check the logic and reasoning
+  - Review and edit
+  - Create a shorter version for social media if needed
+
+  I have a folder with my past LinkedIn posts that the tool should analyze to learn my style and tone.
+
+  The tool should output the finished post formatted for LinkedIn, any generated images, and optionally a shortened social media version. Look at other tools for inspiration if needed.
+test_time_files:
+  - source: test_time_data
+    dest: /project
+timeout: 4500

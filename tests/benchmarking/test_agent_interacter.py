@@ -2,10 +2,10 @@
 
 import pytest
 
-from eval_recipes.benchmarking.agent_interacter import interact_with_agent
+from eval_recipes.benchmarking.evaluation.agent_interacter import interact_with_agent
 
 
-@pytest.mark.skip(reason="time")
+@pytest.mark.skip(reason="requires API access")
 @pytest.mark.parametrize(
     ("task_instructions", "agent_log"),
     [

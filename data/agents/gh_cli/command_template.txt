@@ -1,1 +1,0 @@
-copilot -p "{{task_instructions}}" --allow-all-tools --log-level all --stream off --model "claude-opus-4.5"

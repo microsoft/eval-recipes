@@ -1,2 +1,14 @@
-required_env_vars:
-  - ANTHROPIC_API_KEY
+id: claude_code
+agent_name: claude_code
+# Claude Code is installed in the base image
+dockerfile_portion: ""
+installation_files: []
+runtime_files: []
+command_template: >-
+  IS_SANDBOX=1 claude --verbose --output-format stream-json -p "{{task_instructions}}"
+  --disallowedTools "AskUserQuestion" --dangerously-skip-permissions --model opus
+command_template_continue: >-
+  IS_SANDBOX=1 claude --verbose --output-format stream-json -c -p "{{task_instructions}}"
+  --disallowedTools "AskUserQuestion" --dangerously-skip-permissions --model opus
+agent_logs_paths: []
+source_code_path: null

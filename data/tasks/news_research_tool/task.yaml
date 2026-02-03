@@ -1,6 +1,4 @@
-timeout: 4500
-required_env_vars:
-  - ANTHROPIC_API_KEY
+name: news_research_tool
 task_info:
   difficulty: hard
   non_deterministic_evals: true
@@ -8,4 +6,23 @@ task_info:
     - cli_tool
     - research
     - web_scraping
-test_command: uv run --no-project /project/test.py
+evaluation_configs:
+  - type: score
+    test_script: test.py
+    test_command: uv run --no-project /project/test.py
+dockerfile_portion: ""
+instructions: |
+  Build a tool that uses the ddgs (Dux Distributed Global Search) Python library to find and summarize the latest news on a given topic.
+
+  The tool should:
+  1. Use ddgs to search for high quality recent news articles on the specified topic
+  2. Find supporting information after the initial search returns web links.
+  3. Create a summary that synthesizes the findings into a digestible report.
+  4. Save the output to a markdown file
+  5. Ensure all content is grounded in actual factual results from the web with proper citations (including URLs and publication dates)
+
+  The tool should be a command-line interface that accepts a topic as input and produces a well-formatted markdown report with:
+  - A summary of the latest developments on the topic with citations and references to source articles
+
+  Make sure to include a README.md with usage instructions and examples.
+timeout: 4500

@@ -1,2 +1,0 @@
-Go to https://huggingface.co/datasets/openai/gdpval and output to a file called "gdpval_prompts.csv" all of the prompts in the dataset in column called "prompt"
-Then, output to a file called "gdpval_summary.txt" a factual and accurate synthesis of the types of tasks in the dataset grouped into 5 or so categories with examples. Keep it relatively brief, each category to one paragraph of 5 or less sentences.

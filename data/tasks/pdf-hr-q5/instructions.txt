@@ -1,4 +1,0 @@
-I am doing some data analysis based on `hr_report.pdf`. Can you help me answer this: Which division had the largest increase in the percentage of employees rated 4 or 5 between 2021 and 2024? Include the division name and the percent change.
-Please place the answer in a text file called "data_analysis_answer.txt" that just contains the answer.
-
-Note this data has been fully anonymized including the name of the company, people, exact numbers, etc. Do not let that bias your analysis.

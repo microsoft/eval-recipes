@@ -1,3 +1,20 @@
-required_env_vars:
-  - ANTHROPIC_API_KEY
-agent_log_hint: "Session logs are under `~/.amplifier/projects/`"
+id: amplifier_foundation
+agent_name: amplifier_foundation
+dockerfile_portion: |
+  ENV PATH="/root/.cargo/bin:/root/.local/bin:$PATH"
+
+  RUN uv tool install git+https://github.com/microsoft/amplifier
+
+  RUN amplifier --version
+
+  RUN amplifier bundle list
+installation_files: []
+runtime_files:
+  - source: data
+    dest: /project
+command_template: >-
+  amplifier run --bundle foundation --verbose --output-format "json" --model "claude-opus-4-5" --provider anthropic "{{task_instructions}}"
+command_template_continue: >-
+  amplifier continue "{{task_instructions}}"
+agent_logs_paths: []
+source_code_path: null

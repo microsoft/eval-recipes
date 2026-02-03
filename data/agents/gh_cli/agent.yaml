@@ -1,2 +1,15 @@
-required_env_vars:
-  - GITHUB_TOKEN
+id: gh_cli
+agent_name: gh_cli
+dockerfile_portion: |
+  RUN npm install -g @github/copilot
+
+  # Verify installation
+  RUN copilot --version
+installation_files: []
+runtime_files: []
+command_template: >-
+  copilot -p "{{task_instructions}}" --allow-all-tools --log-level all --stream off --model "claude-opus-4.5"
+command_template_continue: >-
+  copilot -p "{{task_instructions}}" --continue --allow-all-tools --log-level all --stream off --model "claude-opus-4.5"
+agent_logs_paths: []
+source_code_path: null

@@ -12,12 +12,12 @@ Checks:
 import asyncio
 import csv
 import io
-import sys
 from pathlib import Path
+import sys
 
 import click
 
-from eval_recipes.benchmarking.test_utils import (
+from eval_recipes.benchmarking.evaluation.test_utils import (
     get_instructions_from_file_or_default,
     get_test_id_from_env_or_default,
     levenshtein_distance,
@@ -31,8 +31,6 @@ from eval_recipes.evaluations.claim_verification.claim_verification_evaluator im
 from eval_recipes.evaluations.claim_verification.schemas import (
     InputClaimVerificationEvaluator,
     InputContext,
-)
-from eval_recipes.evaluations.claim_verification.schemas import (
     OutputClaimVerificationEvaluatorMetrics,
 )
 

@@ -1,19 +1,18 @@
 # Copyright (c) Microsoft. All rights reserved.
 
 import asyncio
-import sys
 from pathlib import Path
+import sys
 
 import click
 from loguru import logger
 
-from eval_recipes.benchmarking.semantic_test import semantic_test
-from eval_recipes.benchmarking.test_utils import (
+from eval_recipes.benchmarking.evaluation.semantic_test import semantic_test
+from eval_recipes.benchmarking.evaluation.test_utils import (
     get_instructions_from_file_or_default,
     get_test_id_from_env_or_default,
     write_test_result,
 )
-
 
 # Define Semantic Test 1: Check Dependencies
 
@@ -160,7 +159,6 @@ async def run_test(test_id: str, output_dir: Path, instructions_file: Path | Non
             working_dir=Path("/project"),
         )
 
-        
         logger.info("Running semantic test 3: Running tool with specific topic and validating quality...")
         result_3 = await semantic_test(
             steps=STEPS_3_QUALITY_VALIDATION,
@@ -171,11 +169,7 @@ async def run_test(test_id: str, output_dir: Path, instructions_file: Path | Non
 
         # Calculate final score with weighted average
         # Weights: dependencies (20%), run and validate (30%), quality validation (50%)
-        final_score = (
-            result_1.score * 0.20
-            + result_2.score * 0.30
-            + result_3.score * 0.50
-        )
+        final_score = result_1.score * 0.20 + result_2.score * 0.30 + result_3.score * 0.50
 
         metadata = {
             "instructions": instructions,

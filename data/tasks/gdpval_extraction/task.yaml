@@ -1,10 +1,16 @@
-timeout: 4500
-required_env_vars:
-  - OPENAI_API_KEY
+name: gdpval_extraction
 task_info:
   difficulty: easy
   non_deterministic_evals: true
   categories:
     - data_extraction
     - research
-test_command: uv run --no-project /project/test.py --csv /project/gdpval_prompts.csv --summary /project/gdpval_summary.txt
+evaluation_configs:
+  - type: score
+    test_script: test.py
+    test_command: uv run --no-project /project/test.py --csv /project/gdpval_prompts.csv --summary /project/gdpval_summary.txt
+dockerfile_portion: ""
+instructions: |
+  Go to https://huggingface.co/datasets/openai/gdpval and output to a file called "gdpval_prompts.csv" all of the prompts in the dataset in column called "prompt"
+  Then, output to a file called "gdpval_summary.txt" a factual and accurate synthesis of the types of tasks in the dataset grouped into 5 or so categories with examples. Keep it relatively brief, each category to one paragraph of 5 or less sentences.
+timeout: 4500

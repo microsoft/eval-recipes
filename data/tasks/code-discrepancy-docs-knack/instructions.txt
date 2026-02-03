@@ -1,5 +1,0 @@
-First, extract the knack.zip file to the knack/ directory:
-unzip knack.zip -d knack
-
-I'm working on cleaning up the knack framework docs, could you find me all discrepancies in the documentation versus what is actually implemented/how it works?
-Please place your findings in DISCREPANCIES.md so I can review them.

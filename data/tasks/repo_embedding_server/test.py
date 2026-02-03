@@ -1,24 +1,22 @@
 # Copyright (c) Microsoft. All rights reserved.
 
 import asyncio
-import sys
 from pathlib import Path
+import sys
 
 import click
 from loguru import logger
 
-from eval_recipes.benchmarking.semantic_test import semantic_test
-from eval_recipes.benchmarking.test_utils import (
+from eval_recipes.benchmarking.evaluation.semantic_test import semantic_test
+from eval_recipes.benchmarking.evaluation.test_utils import (
     get_instructions_from_file_or_default,
     get_test_id_from_env_or_default,
     write_test_result,
 )
 
-
 EXPECTED_OLLAMA_MODEL = "embeddinggemma:300m-qat-q8_0"
 
 TEST_REPO_URL = "https://github.com/microsoft/eval-recipes"
-
 
 
 # Define Semantic Test 1: Core Dependencies and Architecture
@@ -139,10 +137,7 @@ async def run_test(test_id: str, output_dir: Path, instructions_file: Path | Non
 
         # Calculate final score with weighted average
         # Weights: dependencies (25%), comprehensive functionality (75%)
-        final_score = (
-            result_1.score * 0.25
-            + result_2.score * 0.75
-        )
+        final_score = result_1.score * 0.25 + result_2.score * 0.75
 
         metadata = {
             "instructions": instructions,

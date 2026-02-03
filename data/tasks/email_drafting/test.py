@@ -1,19 +1,18 @@
 # Copyright (c) Microsoft. All rights reserved.
 
 import asyncio
-import sys
 from pathlib import Path
+import sys
 
 import click
 from loguru import logger
 
-from eval_recipes.benchmarking.semantic_test import semantic_test
-from eval_recipes.benchmarking.test_utils import (
+from eval_recipes.benchmarking.evaluation.semantic_test import semantic_test
+from eval_recipes.benchmarking.evaluation.test_utils import (
     get_instructions_from_file_or_default,
     get_test_id_from_env_or_default,
     write_test_result,
 )
-
 
 # Define Semantic Test 1 - Agent SDK Check
 
@@ -92,7 +91,7 @@ async def run_test(test_id: str, output_dir: Path, instructions_file: Path | Non
     instructions = get_instructions_from_file_or_default(instructions_file=instructions_file)
 
     try:
-        logger.info(f"Running semantic test 1 to check for Agent SDK dependency...")
+        logger.info("Running semantic test 1 to check for Agent SDK dependency...")
         result_1 = await semantic_test(
             steps=STEPS_1_AGENT_SDK_DEPENDENCY,
             rubric=RUBRIC_1_AGENT_SDK_DEPENDENCY,
@@ -100,7 +99,7 @@ async def run_test(test_id: str, output_dir: Path, instructions_file: Path | Non
             working_dir=Path("/project"),
         )
 
-        logger.info(f"Running semantic test 2 to check if the tool works as intended...")
+        logger.info("Running semantic test 2 to check if the tool works as intended...")
         result_2 = await semantic_test(
             steps=STEPS_2_USE_TOOL,
             rubric=RUBRIC_2_USE_TOOL,

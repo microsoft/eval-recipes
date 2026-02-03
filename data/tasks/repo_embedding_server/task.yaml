@@ -1,10 +1,32 @@
-timeout: 4500
-required_env_vars:
-  - ANTHROPIC_API_KEY
+name: repo_embedding_server
 task_info:
   difficulty: hard
   non_deterministic_evals: true
   categories:
     - service
     - ai_tool
-test_command: uv run --no-project /project/test.py
+evaluation_configs:
+  - type: score
+    test_script: test.py
+    test_command: uv run --no-project /project/test.py
+dockerfile_portion: |
+  # Install zstd (required by Ollama installer for extraction)
+  RUN apt-get update && apt-get install -y --no-install-recommends zstd && rm -rf /var/lib/apt/lists/*
+
+  # Install Ollama
+  RUN curl -fsSL https://ollama.com/install.sh | sh
+
+  # Start Ollama service in the background and pull the embedding model
+  RUN nohup ollama serve > /dev/null 2>&1 & \
+      sleep 5 && \
+      ollama pull embeddinggemma:300m-qat-q8_0
+instructions: |
+  I want to use Ollama and a local embedding model to build a custom embedding based index of it.
+  - It should be exposed as a web server built using FastAPI.
+  - When the server starts it will read from a file repository URLs to index. This file can be updated live
+  - There should be a manual route to re-index
+  - Use chromadb's Python library directly for vector storage (don't run a separate ChromaDB service - just use their client library with either disk-based or in-memory storage)
+  - It exposes an endpoint for querying a specific repo. The endpoint also returns if indexing is done or not (it always also returns results as long as there is at least 1 embedding)
+  - The server must use Ollama's local API and the model `embeddinggemma:300m-qat-q8_0` which has a context window of 2k
+  Add a README with usage instructions, ollama is already installed.
+timeout: 4500

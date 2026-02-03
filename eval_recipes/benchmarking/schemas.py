@@ -3,20 +3,30 @@
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, field_validator
 
-# region Common Configuration Schemas
+# region Definitions
 
 
-class AgentConfig(BaseModel):
-    name: str
-    required_env_vars: list[str] = []  # List of required environment variables
-    agent_installation: str  # Docker commands to install the agent
-    command_template: str  # Command Liquid template with placeholders like {{task_instructions}}
-    command_template_continue: str | None = None  # Optional command Liquid template for continuing agent conversation
-    data_dir: Path | None = None  # Optional path to agent data directory
-    local_source_path: Path | None = None  # Optional path to local agent source code for development
-    agent_log_hint: str | None = None  # Optional hint for where agent stores logs in the container
+class InstallationFileMapping(BaseModel):
+    """Maps a local directory to a container directory for file copying."""
+
+    source: Path  # Local path (relative paths resolved from agent directory, or absolute paths)
+    dest: str  # Absolute path in container
+
+
+class AgentDefinition(BaseModel):
+    id: str  # unique id for the agent, usually corresponding to the directory name
+    agent_name: str  # Allows for grouping multiple versions of the same agent.
+    dockerfile_portion: str = ""  # Docker commands to install the task
+    installation_files: list[InstallationFileMapping] = []  # Files to copy into container before agent installation
+    runtime_files: list[InstallationFileMapping] = []  # Files to copy into container after agent installation
+    command_template: str  # Command to send to the agent to complete a task. Liquid template with a placeholder for {{task_instructions}}
+    command_template_continue: str | None = (
+        None  # Command to send to the agent to continue a conversation. Liquid template with a placeholder for {{task_instructions}}. (Optional)
+    )
+    agent_logs_paths: list[str] = []  # List of paths where the agent stores logs in the container
+    source_code_path: str | None  # Location of the agent's source code in the container, if applicable
 
 
 class TaskInfo(BaseModel):
@@ -25,99 +35,276 @@ class TaskInfo(BaseModel):
     categories: list[str] = []  # Category tags for the task like "finance"
 
 
-class TaskConfig(BaseModel):
-    name: str
-    eval_type: Literal["score", "comparison", "both"]
-    required_env_vars: list[str] = []  # List of required environment variables
-    task_installation: str  # Docker commands to install the task
-    instructions: str  # Instructions text for the agent
-    task_time_data_dir: Path | None = None  # Optional path to task-time data directory (copied before agent runs)
-    test_time_data_dir: Path | None = None  # Optional path to test-time data directory (copied before tests run)
-    timeout: int = 1800  # Timeout in seconds
-    task_info: TaskInfo
+class ScoreEvalConfig(BaseModel):
+    type: Literal["score"] = "score"
+    test_script: Path  # Path to test.py script
+    test_command: str = "uv run --no-project /project/test.py"  # Command to run tests
 
-    # Optional evaluation configs (populated based on eval_type)
-    score_eval: "ScoreEvalConfig | None" = None
-    comparison_eval: "ComparisonEvalConfig | None" = None
 
-    @model_validator(mode="after")
-    def validate_eval_configs(self) -> "TaskConfig":
-        """Ensure the appropriate eval config is present based on eval_type."""
-        if self.eval_type == "score" and self.score_eval is None:
-            raise ValueError("score_eval must be set when eval_type is 'score'")
-        if self.eval_type == "comparison" and self.comparison_eval is None:
-            raise ValueError("comparison_eval must be set when eval_type is 'comparison'")
-        if self.eval_type == "both":
-            if self.score_eval is None:
-                raise ValueError("score_eval must be set when eval_type is 'both'")
-            if self.comparison_eval is None:
-                raise ValueError("comparison_eval must be set when eval_type is 'both'")
-        return self
+class ComparisonEvalConfig(BaseModel):
+    type: Literal["comparison"] = "comparison"
+    guidelines: str | None = None  # Task-specific evaluation guidelines (e.g., how to evaluate a PPT)
+
+
+EvaluationConfig = ScoreEvalConfig | ComparisonEvalConfig
+
+
+class TaskDefinition(BaseModel):
+    name: str  # Name of the task, usually corresponding to the directory name
+    task_info: TaskInfo  # Metadata about the task
+    evaluation_configs: list[EvaluationConfig] = []  # Evaluation configuration for the task
+    dockerfile_portion: str = ""  # Docker commands to install the task
+    instructions: str | None  # Task instructions for the agent (optional)
+    task_time_files: list[
+        InstallationFileMapping
+    ] = []  # Files to copy into container before agent runs, specific to the task
+    test_time_files: list[
+        InstallationFileMapping
+    ] = []  # Files to copy into container before evaluations run, specific to the task
+    timeout: int = 1800  # Timeout in seconds for agent to complete the task
+
+
+class ScoreBenchmarkAgentDefinition(BaseModel):
+    agent_id: str
+    task_names: list[str]
+    trials: int = 1
+
+
+class ScoreBenchmarkDefinition(BaseModel):
+    benchmark_type: str = "score"
+    continuation_provider: Literal["openai", "azure_openai", "none"] = "none"
+    continuation_model: str = "gpt-5.1"
+    score_benchmarks: list[ScoreBenchmarkAgentDefinition]
+    analysis_score_threshold: float = 85.0  # Skip analysis if score >= threshold
+
+
+class ComparisonBenchmarkAgentDefinition(BaseModel):
+    task_name: str
+    agent_ids: list[str]
+
+
+class ComparisonBenchmarkDefinition(BaseModel):
+    benchmark_type: str = "comparison"
+    continuation_provider: Literal["openai", "azure_openai", "none"] = "none"
+    continuation_model: str = "gpt-5.1"
+    comparison_benchmarks: list[ComparisonBenchmarkAgentDefinition]
+    comparison_runs: int = 7  # Number of comparison runs per task for consistency measurement
+
+
+class BenchmarkDefinition(BaseModel):
+    """Combined benchmark definition for running both score and comparison benchmarks."""
+
+    score_benchmark: ScoreBenchmarkDefinition | None = None
+    comparison_benchmark: ComparisonBenchmarkDefinition | None = None
+
+
+# endregion
+
+# region Common Job Schemas
+
+
+class ExecuteAgentJobInput(BaseModel):
+    agent: AgentDefinition
+    task: TaskDefinition
+    trial_number: int
+    continuation_provider: Literal["openai", "azure_openai", "none"] = "none"
+    continuation_model: str = "gpt-5.1"
+
+
+class ExecuteAgentJobOutput(BaseModel):
+    container_id: str  # Docker container ID for subsequent jobs
+    image_tag: str  # Docker image tag (needed for cleanup)
+    agent_console_log: str
+    agent_duration_seconds: float
+    continuation_occurred: bool = False
+    continuation_prompt: str | None = None
+    continuation_error: str | None = None
+
+
+# endregion
+
+# region Score Based Evaluation Schemas
+
+
+class ExecuteEvaluationsJobInput(BaseModel):
+    task: TaskDefinition
+    trial_number: int
+    agent_log_hint: str | None = None  # From AgentDefinition.agent_logs_paths
+
+
+class EvaluateJobOutput(BaseModel):
+    score: float
+    rubric: dict[str, Any] = {}
+    test_console_log: str
+    test_duration_seconds: float
+
+
+class TaskAnalysisJobInput(BaseModel):
+    task: TaskDefinition
+    trial_number: int
+    analysis_score_threshold: float = 85.0
+
+
+class TaskAnalysisJobOutput(BaseModel):
+    valid_trial: bool  # False if failure was infrastructure-related (Docker, API, timeout)
+    analysis_skipped: bool  # True if score >= threshold
+    failure_report: str | None = None  # Markdown report (None if skipped)
+    failure_category: str | None = None  # e.g., "agent_error", "infrastructure_error", "test_issue"
+
+
+class TrialExecutionJobInput(BaseModel):
+    """Combined input for executing a complete trial (agent execution, evaluation, and analysis)."""
+
+    agent: AgentDefinition
+    task: TaskDefinition
+    trial_number: int
+    continuation_provider: Literal["openai", "azure_openai", "none"] = "none"
+    continuation_model: str = "gpt-5.1"
+    agent_log_hint: str | None = None
+    analysis_score_threshold: float = 85.0
+
+
+class TrialExecutionJobOutput(BaseModel):
+    # From ExecuteAgentJobOutput
+    agent_console_log: str
+    agent_duration_seconds: float
+    continuation_occurred: bool = False
+    continuation_prompt: str | None = None
+    continuation_error: str | None = None
+
+    # From EvaluateJobOutput
+    score: float
+    rubric: dict[str, Any] = {}
+    test_console_log: str
+    test_duration_seconds: float
+
+    # From TaskAnalysisJobOutput
+    valid_trial: bool
+    analysis_skipped: bool
+    failure_report: str | None = None
+    failure_category: str | None = None
+
+
+class FinalAnalysisJobInput(BaseModel):
+    agent_id: str
+    provider: Literal["openai", "azure_openai"] = "openai"
+    model: str = "gpt-5.2"
+
+
+class FinalAnalysisJobOutput(BaseModel):
+    executive_summary_path: str  # Path to executive summary markdown
+    full_report_path: str  # Path to full report markdown
+    executive_summary: str  # Content for easy access
+    full_report: str  # Content for easy access
+    report_generated: bool  # False if no failure reports to analyze
+    num_reports_analyzed: int
+
+
+class AgentComparisonJobInput(BaseModel):
+    provider: Literal["openai", "azure_openai"] = "openai"
+    model: str = "gpt-5.2"
+
+
+class AgentComparisonJobOutput(BaseModel):
+    executive_summary: str  # Executive summary content
+    full_report: str  # Full comparison report content
+    executive_summary_path: str = ""  # Path to executive summary (empty if skipped)
+    full_report_path: str = ""  # Path to full report (empty if skipped)
+    num_agents_compared: int = 0  # Number of agents with reports
+
+
+# endregion
+
+# region Comparison Based Evaluation Schemas
+
+
+class ExtractProjectJobInput(BaseModel):
+    agent_id: str
+    task_name: str
+    trial_number: int
+
+
+class ExtractProjectJobOutput(BaseModel):
+    project_dir: str  # Absolute path to extracted project directory
+    agent_id: str
+    task_name: str
+
+
+class ComparisonTrialJobInput(BaseModel):
+    agent: AgentDefinition
+    task: TaskDefinition
+    trial_number: int = 1  # Usually 1 for comparisons
+    continuation_provider: Literal["openai", "azure_openai", "none"] = "none"
+    continuation_model: str = "gpt-5.1"
+
+
+class ComparisonTrialJobOutput(BaseModel):
+    # From ExecuteAgentJobOutput
+    agent_console_log: str
+    agent_duration_seconds: float
+    continuation_occurred: bool = False
+    continuation_prompt: str | None = None
+    continuation_error: str | None = None
+
+    # From ExtractProjectJobOutput
+    project_dir: str  # Absolute path to extracted project directory
+    agent_id: str
+    task_name: str
+
+
+class ComparisonResult(BaseModel):
+    reasoning: str  # Qualitative analysis explaining the comparison (may contain anonymous agent names)
+    rankings: list[int]  # Ordered list of directory indices, best to worst
+    anonymous_to_index: dict[str, int]  # Maps anonymous names (e.g., "agent_eac8") to directory indices
+
+
+class SemanticComparisonJobInput(BaseModel):
+    task_name: str
+    task_instructions: str
+    comparison_run_number: int  # For multiple runs (consistency)
+    guidelines: str | None = None
+
+
+class SemanticComparisonJobOutput(BaseModel):
+    task_name: str
+    comparison_run_number: int
+    reasoning: str
+    rankings: dict[str, int]  # agent_id -> rank (1 = best)
+    anonymous_to_agent_id: dict[str, str]  # Maps anon names to agent_ids
+
+
+class ComparisonAggregationJobInput(BaseModel):
+    task_name: str
+    task_instructions: str
+    provider: Literal["openai", "azure_openai"] = "openai"
+    model: str = "gpt-5.2"
+
+
+class ComparisonAggregationJobOutput(BaseModel):
+    task_name: str
+    analysis_report: str
+    report_path: str  # Path to saved markdown file
+    num_comparisons_analyzed: int
+
+
+class ComparisonFinalAnalysisJobInput(BaseModel):
+    provider: Literal["openai", "azure_openai"] = "openai"
+    model: str = "gpt-5.2"
+
+
+class ComparisonFinalAnalysisJobOutput(BaseModel):
+    analysis_report: str
+    report_path: str  # Path to COMPARISON_FINAL_REPORT.md
+    num_tasks_analyzed: int
 
 
 # endregion
 
 
-# region Score-Based Schemas
-
-
-class ScoreEvalConfig(BaseModel):
-    """Configuration for score-based evaluation."""
-
-    test_script: Path  # Path to test.py script
-    test_command: str = "uv run --no-project /project/test.py"  # Command to run tests
-
-
-class TrialResult(BaseModel):
-    trial_number: int
-    score: float
-    metadata: dict[str, Any] = {}
-    test_output: str
-    agent_duration_seconds: float | None = None
-    test_duration_seconds: float | None = None
-
-    @field_validator("score")
-    @classmethod
-    def validate_score(cls, v: float) -> float:
-        """Clamp score to 0-100 range."""
-        return max(0.0, min(100.0, v))
-
-
-class AggregatedTaskResult(BaseModel):
-    task_name: str
-    agent_name: str
-    num_trials: int
-    trials: list[TrialResult]
-    mean_score: float
-    median_score: float
-    std_dev: float
-    min_score: float
-    max_score: float
-    num_perfect_trials: int  # How many trials got 100%
-    mean_agent_duration_seconds: float | None = None
-    median_agent_duration_seconds: float | None = None
-    mean_test_duration_seconds: float | None = None
-    median_test_duration_seconds: float | None = None
-
-    @field_validator("mean_score", "median_score", "min_score", "max_score")
-    @classmethod
-    def validate_scores(cls, v: float) -> float:
-        """Clamp scores to 0-100 range."""
-        return max(0.0, min(100.0, v))
-
-    @field_validator("std_dev")
-    @classmethod
-    def validate_std_dev(cls, v: float) -> float:
-        """Ensure std_dev is non-negative."""
-        return max(0.0, v)
+# region Results Aggregation Schemas
 
 
 class SemanticTestResult(BaseModel):
-    """Result from semantic_test() which uses an LLM agent to audit another agent's work.
-
-    Used by: eval_recipes.benchmarking.semantic_test.semantic_test()
-    """
-
     score: float  # Scores must be between 0 and 100
     metadata: dict[str, Any]  # All other fields from the rubric
 
@@ -128,113 +315,188 @@ class SemanticTestResult(BaseModel):
         return max(0.0, min(100.0, v))
 
 
+class TrialMetrics(BaseModel):
+    """Metrics for a single trial."""
+
+    trial_number: int
+    score: float
+    agent_duration_seconds: float | None
+    test_duration_seconds: float | None
+    valid_trial: bool
+    failure_category: str | None
+    failure_report_path: str | None  # Relative path to FAILURE_REPORT.md
+    rubric: dict[str, Any]
+    logs: dict[str, str]  # {"build": "...", "agent": "...", "test": "..."}
+    project_zip_path: str | None  # Relative path to project.zip
+
+
+class TaskMetrics(BaseModel):
+    task_name: str
+    instructions: str
+    task_info: TaskInfo  # difficulty, categories, etc.
+
+    # Aggregated metrics (excluding invalid trials)
+    num_trials: int
+    num_valid_trials: int
+    mean_score: float
+    std_dev: float
+    min_score: float
+    max_score: float
+    median_score: float
+    num_perfect_trials: int  # score == 100
+
+    mean_agent_duration_seconds: float | None
+    mean_test_duration_seconds: float | None
+
+    trials: list[TrialMetrics]
+
+
+class AgentMetrics(BaseModel):
+    agent_id: str
+    agent_name: str
+
+    # Aggregated metrics
+    num_unique_tasks: int
+    total_trials: int
+    total_valid_trials: int
+
+    mean_score: float  # Mean of task mean scores
+    variability: float  # Mean of task std_devs
+    consistency_rate: float  # % of tasks with std_dev < 10
+    mean_agent_duration_seconds: float | None
+
+    # Report paths (relative)
+    executive_summary_path: str | None
+    full_report_path: str | None
+
+    tasks: list[TaskMetrics]
+
+
+class AgentSummary(BaseModel):
+    agent_id: str
+    agent_name: str
+    mean_score: float
+    variability: float
+    consistency_rate: float
+
+
+class BenchmarkSummary(BaseModel):
+    benchmark_timestamp: str
+    total_agents: int
+    total_tasks: int
+    total_trials: int
+
+    agent_summaries: list[AgentSummary]
+
+
+class BenchmarkManifest(BaseModel):
+    benchmark_timestamp: str
+    benchmark_log_path: str
+
+    # Agent comparison (if 2+ agents)
+    comparison_executive_summary: str | None
+    comparison_full_report: str | None
+    comparison_executive_summary_path: str | None
+    comparison_full_report_path: str | None
+
+    agents: list[AgentMetrics]
+
+
+class ResultsAggregationJobInput(BaseModel):
+    include_project_zips: bool = True
+    include_logs: bool = True
+
+
+class ResultsAggregationJobOutput(BaseModel):
+    manifest_path: str
+    summary_path: str
+    results_dir: str
+    html_report_path: str | None = None
+
+
 # endregion
 
-
-# region Comparison-Based Schemas
-
-
-class ComparisonEvalConfig(BaseModel):
-    """Configuration for comparison-based evaluation."""
-
-    guidelines: str | None = None  # Task-specific evaluation guidelines (e.g., how to evaluate a PPT)
+# region Comparison Results Aggregation Schemas
 
 
-class ComparisonTaskSpec(BaseModel):
-    """Specification for a comparison task with explicit agent associations.
-
-    Designed for mixed usage:
-    - Can be loaded from YAML files (task.yaml with 'agents' field)
-    - Can be defined programmatically in Python
-    """
-
-    task_name: str  # Name of the task (maps to task directory)
-    agent_names: list[str]  # Names of agents to compare (maps to agents_dir)
+class ComparisonTrialData(BaseModel):
+    comparison_run_number: int
+    rankings: dict[str, int]  # agent_id -> rank (1 = best)
+    reasoning: str
 
 
-class ComparisonTaskConfig(BaseModel):
-    """Fully resolved comparison task configuration with loaded configs."""
-
-    task: TaskConfig
-    agents: list[AgentConfig]
-    guidelines: str | None = None
-
-
-class ComparisonResult(BaseModel):
-    """Result from semantic_test_comparison() which compares multiple agents' outputs on the same task.
-
-    Used by: eval_recipes.benchmarking.semantic_test.semantic_test_comparison()
-    """
-
-    reasoning: str  # Qualitative analysis explaining the comparison (may contain anonymous agent names)
-    rankings: list[int]  # Ordered list of directory indices, best to worst
-    anonymous_to_index: dict[str, int]  # Maps anonymous names (e.g., "agent_eac8") to directory indices
-
-
-class ComparisonRunResult(BaseModel):
-    """Result of a single semantic_test_comparison run."""
-
+class ComparisonTaskMetrics(BaseModel):
     task_name: str
-    comparison_run_num: int
-    result: ComparisonResult  # From semantic_test_comparison
-    agent_names: list[str]  # Agent names in order matching result.rankings indices
+    task_instructions: str
+    task_info: TaskInfo  # difficulty, categories
+
+    # Per-agent rankings across all comparison runs
+    agent_ranks: dict[str, list[int]]  # agent_id -> [rank1, rank2, ...]
+
+    # Computed metrics
+    agent_avg_rank: dict[str, float]  # agent_id -> average rank
+    agent_win_rate: dict[str, float]  # agent_id -> win rate (0-100)
+    agreement_kendalls_w: float | None  # Kendall's W for this task
+
+    # LLM analysis from ComparisonAggregationJob
+    aggregate_analysis: str
+    aggregate_analysis_path: str | None
+
+    # Trial details
+    trials: list[ComparisonTrialData]
+
+    # Project zips (agent_id -> relative path)
+    project_zip_paths: dict[str, str]
 
 
-class ComparisonBenchmarkResults(BaseModel):
-    """All results from a comparison benchmark run."""
-
-    comparison_runs: list[ComparisonRunResult]
-
-
-class AggregateReport(BaseModel):
-    """LLM-generated summary of comparison results for a task."""
-
-    task_name: str
-    agent_names: list[str]
-    analysis: str  # Plain text analysis explaining why rankings occurred
+class ComparisonOverviewMetrics(BaseModel):
+    agent_avg_rank: dict[str, float]  # Overall average rank
+    agent_win_rate: dict[str, float]  # Overall win rate (0-100)
+    agent_task_wins: dict[str, int]  # Number of tasks won
+    task_ties: int  # Number of tied tasks
+    mean_kendalls_w: float | None
 
 
-class AggregateReportResult(BaseModel):
-    """Result from aggregate report job."""
+class ComparisonBenchmarkManifest(BaseModel):
+    benchmark_timestamp: str
+    benchmark_log_path: str | None
 
-    task_name: str
-    comparison_folder_name: str
-    report: AggregateReport
+    # Participating agents
+    agent_ids: list[str]
 
+    # Overview metrics
+    overview: ComparisonOverviewMetrics
 
-class FinalAggregateReport(BaseModel):
-    """LLM-generated final summary across all tasks."""
+    # Final analysis
+    final_analysis_report: str | None
+    final_analysis_report_path: str | None
 
-    agent_names: list[str]
-    analysis: str  # Paragraph + bullet points explaining overall results
-
-
-# endregion
-
-
-# region Score Run Definition Schemas
+    # Per-task data
+    tasks: list[ComparisonTaskMetrics]
 
 
-class ScoreTaskSpec(BaseModel):
-    """Specification for a task within a score run definition."""
+class ComparisonBenchmarkSummary(BaseModel):
+    benchmark_timestamp: str
+    num_tasks: int
+    num_comparison_runs_per_task: int
+    agent_ids: list[str]
 
-    task: str  # Task name (maps to task directory)
-    trials: int | None = None  # Optional trial count override
-
-
-class ScoreAgentSpec(BaseModel):
-    """Specification for an agent and its tasks in a score run definition."""
-
-    agent: str  # Agent name (maps to agent directory)
-    trials: int | None = None  # Default trial count for this agent's tasks
-    tasks: list[ScoreTaskSpec]
+    # Key metrics
+    agent_avg_rank: dict[str, float]
+    agent_win_rate: dict[str, float]
+    agent_task_wins: dict[str, int]
+    mean_kendalls_w: float | None
 
 
-class ScoreRunSpec(BaseModel):
-    """Run definition for score-based benchmarking."""
+class ComparisonResultsAggregationJobInput(BaseModel):
+    include_project_zips: bool = True
 
-    type: Literal["score"] = "score"
-    definitions: list[ScoreAgentSpec]
+
+class ComparisonResultsAggregationJobOutput(BaseModel):
+    manifest_path: str
+    summary_path: str
+    results_dir: str
+    html_report_path: str | None = None
 
 
 # endregion

@@ -1,6 +1,20 @@
+name: pdf-hr-q1
 task_info:
   difficulty: medium
   non_deterministic_evals: false
   categories:
     - pdf_extraction
-test_command: uv run --no-project /project/test.py
+evaluation_configs:
+  - type: score
+    test_script: test.py
+    test_command: uv run --no-project /project/test.py
+dockerfile_portion: ""
+instructions: |
+  I am doing some data analysis based on `hr_report.pdf`. Can you help me answer this: What is the average base salary for the Consumer Home & Office Products division at the Mexico City Manufacturing plant in MX$?
+  Please place the answer in a text file called "data_analysis_answer.txt" that just contains the answer.
+
+  Note this data has been fully anonymized including the name of the company, people, exact numbers, etc. Do not let that bias your analysis.
+task_time_files:
+  - source: task_time_data
+    dest: /project
+timeout: 1800

@@ -1,5 +1,4 @@
-required_env_vars:
-  - ANTHROPIC_API_KEY
+name: cpsc_recall_monitor
 task_info:
   difficulty: easy
   non_deterministic_evals: true
@@ -7,4 +6,13 @@ task_info:
     - cli_tool
     - web_scraping
     - data_extraction
-test_command: uv run --no-project /project/test.py
+evaluation_configs:
+  - type: score
+    test_script: test.py
+    test_command: uv run --no-project /project/test.py
+dockerfile_portion: ""
+instructions: |
+  I need a tool that monitors CPSC consumer product recalls. It should take a month (like "January 2025" or "2025-01") and create a CSV file cataloging all recalled products for that month.
+
+  The output CSV should include product name, recall date, manufacturer, hazard description, and the recall URL for details.
+timeout: 1800

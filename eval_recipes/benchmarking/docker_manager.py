@@ -12,6 +12,7 @@ import docker
 import docker.errors
 from docker.models.containers import Container, ExecResult
 from docker.models.images import Image
+import pathspec
 
 
 class DockerManager:
@@ -389,6 +390,7 @@ class DockerManager:
         src_path: str,
         dest_path: Path,
         exclude_dotfiles: bool = True,
+        exclude_paths: list[str] | None = None,
     ) -> None:
         """Extract a directory from container to local filesystem.
 
@@ -400,8 +402,10 @@ class DockerManager:
             src_path: Path inside container (e.g., "/project")
             dest_path: Local destination path
             exclude_dotfiles: If True, skip files/dirs starting with "."
+            exclude_paths: List of directory/file names to exclude (e.g., ["eval_recipes"])
         """
         dest_path.mkdir(parents=True, exist_ok=True)
+        exclude_paths = exclude_paths or []
 
         # get_archive returns (data_generator, stat_info)
         data_stream, _ = container.get_archive(src_path)
@@ -426,8 +430,50 @@ class DockerManager:
                 if exclude_dotfiles and any(part.startswith(".") for part in relative_path.parts):
                     continue
 
+                # Check if path starts with any excluded directory
+                if any(relative_path.parts[0] == excluded for excluded in exclude_paths):
+                    continue
+
                 # Set the name to the relative path for extraction
                 member.name = str(relative_path)
 
                 # Extract the member
                 tar.extract(member, dest_path)
+
+
+def collect_eval_recipes_package() -> dict[str, bytes]:
+    """Collect all project files for copying to container.
+
+    Works for both local development and installed packages.
+    Uses .gitignore for filtering when available (local dev),
+    falls back to basic __pycache__ filtering (installed packages).
+
+    Returns:
+        Dictionary mapping relative paths to file contents as bytes.
+    """
+
+    # Find project root via this file's location
+    # docker_manager.py is at eval_recipes/benchmarking_v2/docker_manager.py
+    eval_recipes_dir = Path(__file__).parents[1]
+    project_root = eval_recipes_dir.parent
+
+    # Try to load .gitignore (exists in local dev, not in installed packages)
+    gitignore_path = project_root / ".gitignore"
+    # Always exclude .git directory (not in .gitignore since git handles it automatically)
+    base_patterns = [".git/"]
+    if gitignore_path.exists():
+        patterns = base_patterns + gitignore_path.read_text(encoding="utf-8").splitlines()
+        spec = pathspec.PathSpec.from_lines("gitwildmatch", patterns)
+    else:
+        # Fallback for installed packages
+        spec = pathspec.PathSpec.from_lines("gitwildmatch", [*base_patterns, "__pycache__/", "*.pyc"])
+
+    files: dict[str, bytes] = {}
+    for file_path in project_root.rglob("*"):
+        if not file_path.is_file():
+            continue
+        rel_path = file_path.relative_to(project_root)
+        if not spec.match_file(str(rel_path)):
+            files[str(rel_path)] = file_path.read_bytes()
+
+    return files
