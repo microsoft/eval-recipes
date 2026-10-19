@@ -8,7 +8,7 @@ requires-python = ">=3.11"
 dependencies = [
     "azure-core[aio]>=1.38,<2.0",
     "azure-identity>=1.25,<2.0",
-    "claude-agent-sdk==0.1.19",
+    "claude-agent-sdk==0.2.121",
     "click>=8.3,<9.0",
     "docker>=7.1,<8.0",
     "loguru>=0.7,<1.0",
